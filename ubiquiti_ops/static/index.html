@@ -216,63 +216,8 @@
     .insight-item { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(34,56,71,.55); padding-top: 9px; }
     .insight-name { font-weight: 850; }
     .insight-value { color: var(--cyan); font-weight: 900; white-space: nowrap; }
-    .utilization-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
-    .utilization-card {
-      border: 1px solid rgba(34,56,71,.75);
-      border-radius: 16px;
-      background: rgba(6,16,22,.48);
-      padding: 14px;
-    }
-    .utilization-card h3 { margin: 0 0 12px; font-size: 15px; }
-    .utilization-list { display: grid; gap: 12px; }
-    .utilization-item {
-      border-top: 1px solid rgba(34,56,71,.55);
-      padding-top: 10px;
-      display: grid;
-      gap: 8px;
-    }
-    .utilization-title { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-    .bar {
-      height: 8px;
-      border-radius: 999px;
-      overflow: hidden;
-      background: rgba(34,56,71,.7);
-      border: 1px solid rgba(34,56,71,.8);
-    }
-    .bar-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--green), var(--cyan));
-      border-radius: inherit;
-    }
-    .bar-fill.warn { background: linear-gradient(90deg, var(--amber), #ff8a5b); }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
-    .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-    .trust-column {
-      border: 1px solid rgba(34,56,71,.75);
-      border-radius: 16px;
-      background: rgba(6,16,22,.48);
-      padding: 14px;
-      min-height: 160px;
-    }
-    .trust-column h3 {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      margin: 0 0 12px;
-      font-size: 15px;
-    }
-    .trust-list { display: grid; gap: 10px; }
-    .trust-item {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      border-top: 1px solid rgba(34,56,71,.55);
-      padding-top: 10px;
-    }
-    .trust-item strong { display: block; margin-bottom: 3px; }
     .client-name { font-weight: 950; }
     .client-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
     .client-unknown { color: var(--amber); }
@@ -339,8 +284,6 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid { grid-template-columns: 1fr; }
-      .utilization-grid { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .network-map {
@@ -573,6 +516,53 @@
               <th>MAC</th>
               <th>Access</th>
               <th>Traffic</th>
+              <th>Connected</th>
+            </tr>
+          </thead>
+          <tbody id="clientBody"></tbody>
+        </table>
+      </section>
+    </section>
+
+    <section id="page-clients" class="page" data-page="clients">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Client inventory</div>
+          <h2>Connected clients</h2>
+          <p class="subtle">Search and filter the phones, laptops, IoT devices, and VPN clients reported by the UniFi Network API.</p>
+        </div>
+        <span id="clientStatus" class="subtle">Waiting for client data...</span>
+      </div>
+      <section class="card unifi-panel">
+        <div id="clientNotice" class="notice">Enable the local UniFi Network API collector to populate this section.</div>
+        <div id="clientGrid" class="unifi-grid"></div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <h2>Client list</h2>
+          <div class="client-filters">
+            <input id="clientSearch" type="search" aria-label="Search clients" placeholder="Search name, IP, MAC, network...">
+            <select id="clientTypeFilter" aria-label="Client type filter">
+              <option value="all">All types</option>
+              <option value="wired">Wired</option>
+              <option value="wireless">Wireless</option>
+              <option value="vpn">VPN</option>
+              <option value="unknown">Unknown</option>
+            </select>
+            <select id="clientIdentityFilter" aria-label="Client identity filter">
+              <option value="all">All clients</option>
+              <option value="named">Named only</option>
+              <option value="unnamed">Needs naming</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>IP</th>
+              <th>MAC</th>
+              <th>Access</th>
               <th>Connected</th>
             </tr>
           </thead>
@@ -1166,6 +1156,118 @@
 
     function isTrustedClient(client) {
       return client.trusted === true || String(client.trusted || '').toLowerCase() === 'true';
+    }
+
+    function clientType(client) {
+      const raw = `${client.type || ''} ${client.network || ''} ${client.access?.type || ''}`.toLowerCase();
+      if (raw.includes('vpn')) return 'vpn';
+      if (raw.includes('wireless') || raw.includes('wifi') || raw.includes('wi-fi')) return 'wireless';
+      if (raw.includes('wired') || raw.includes('ethernet')) return 'wired';
+      return 'unknown';
+    }
+
+    function renderClients() {
+      const snapshot = state.unifi || {};
+      const notice = $('clientNotice');
+      const grid = $('clientGrid');
+      const status = $('clientStatus');
+      const body = $('clientBody');
+      const clients = snapshot.clients || [];
+      const filtered = filteredClients(clients);
+      grid.innerHTML = '';
+      body.innerHTML = '';
+
+      if (!snapshot.api_enabled) {
+        status.textContent = 'Collector disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set UNIFI_API_ENABLED=true with a local Network API key to populate connected clients.';
+      } else if (snapshot.network_error) {
+        status.textContent = 'Local Network API unavailable';
+        notice.style.display = 'block';
+        notice.textContent = snapshot.network_error;
+      } else if (!clients.length) {
+        status.textContent = 'No clients returned';
+        notice.style.display = 'block';
+        notice.textContent = 'The local Network API is connected, but no client records were returned in the latest snapshot.';
+      } else {
+        status.textContent = `${filtered.length} of ${clients.length} clients shown`;
+        notice.style.display = 'none';
+      }
+
+      const named = clients.filter(client => !isUnnamedClient(client)).length;
+      const unnamed = Math.max(clients.length - named, 0);
+      const wireless = clients.filter(client => clientType(client) === 'wireless').length;
+      const wired = clients.filter(client => clientType(client) === 'wired').length;
+      const vpn = clients.filter(client => clientType(client) === 'vpn').length;
+      grid.innerHTML = `
+        ${renderInsightCard('Inventory coverage', [
+          ['Total clients', clients.length],
+          ['Named clients', named],
+          ['Need naming', unnamed],
+        ])}
+        ${renderInsightCard('Access mix', [
+          ['Wireless', wireless],
+          ['Wired', wired],
+          ['VPN', vpn],
+        ])}
+        ${renderInsightCard('Current view', [
+          ['Shown', filtered.length],
+          ['Hidden by filters', Math.max(clients.length - filtered.length, 0)],
+          ['Updated', formatDate(snapshot.checked_at)],
+        ])}
+      `;
+
+      for (const client of filtered) {
+        const row = document.createElement('tr');
+        const unnamedClient = isUnnamedClient(client);
+        row.innerHTML = `
+          <td>
+            <div class="client-name ${unnamedClient ? 'client-unknown' : ''}">${escapeHtml(clientName(client))}</div>
+            <div class="client-meta">${escapeHtml(client.id || client.type || '-')}</div>
+          </td>
+          <td>${escapeHtml(client.ipAddress || client.ip || '-')}</td>
+          <td>${escapeHtml(client.macAddress || client.mac || '-')}</td>
+          <td><span class="pill ${unnamedClient ? 'warn' : 'ok'}">${escapeHtml(clientType(client))}</span></td>
+          <td>${formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')}</td>
+        `;
+        body.appendChild(row);
+      }
+      if (!filtered.length) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="5" class="subtle">No clients match the current filters.</td>';
+        body.appendChild(row);
+      }
+    }
+
+    function filteredClients(clients) {
+      const query = $('clientSearch').value.trim().toLowerCase();
+      const type = $('clientTypeFilter').value;
+      const identity = $('clientIdentityFilter').value;
+      return clients.filter(client => {
+        if (type !== 'all' && clientType(client) !== type) return false;
+        if (identity === 'named' && isUnnamedClient(client)) return false;
+        if (identity === 'unnamed' && !isUnnamedClient(client)) return false;
+        if (!query) return true;
+        return [
+          clientName(client),
+          client.ipAddress,
+          client.ip,
+          client.macAddress,
+          client.mac,
+          client.type,
+          client.network,
+          client.id,
+        ].some(value => String(value || '').toLowerCase().includes(query));
+      });
+    }
+
+    function clientName(client) {
+      return client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
+    }
+
+    function isUnnamedClient(client) {
+      const name = String(client.name || client.hostname || client.displayName || '').trim();
+      return !name || /^unknown/i.test(name) || name === String(client.macAddress || client.mac || '').trim();
     }
 
     function clientType(client) {

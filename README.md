@@ -12,7 +12,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Test DNS lookups and external HTTP endpoints
 - Pull Site Manager inventory, hosts, sites, and ISP metric data with the API key that works today
 - Optionally pull connected clients and traffic counters from a local UniFi Network Integration API key
-- Search, filter, and label connected clients in a dedicated client inventory page
+- Search and filter connected clients in a dedicated client inventory page
 - Discover reachable local devices by scanning configured LAN subnets
 - Run a manual WAN speed test from the dashboard and keep the latest result
 - Persist check history in SQLite
