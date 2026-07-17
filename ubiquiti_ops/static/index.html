@@ -216,8 +216,67 @@
     .insight-item { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(34,56,71,.55); padding-top: 9px; }
     .insight-name { font-weight: 850; }
     .insight-value { color: var(--cyan); font-weight: 900; white-space: nowrap; }
+    .utilization-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+    .utilization-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.48);
+      padding: 14px;
+    }
+    .utilization-card h3 { margin: 0 0 12px; font-size: 15px; }
+    .utilization-list { display: grid; gap: 12px; }
+    .utilization-item {
+      border-top: 1px solid rgba(34,56,71,.55);
+      padding-top: 10px;
+      display: grid;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .utilization-item:hover strong { color: var(--cyan); }
+    .utilization-title { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(34,56,71,.7);
+      border: 1px solid rgba(34,56,71,.8);
+    }
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+      border-radius: inherit;
+    }
+    .bar-fill.warn { background: linear-gradient(90deg, var(--amber), #ff8a5b); }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
+    .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .trust-column {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.48);
+      padding: 14px;
+      min-height: 160px;
+    }
+    .trust-column h3 {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+    .trust-list { display: grid; gap: 10px; }
+    .trust-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid rgba(34,56,71,.55);
+      padding-top: 10px;
+      cursor: pointer;
+    }
+    .trust-item:hover strong { color: var(--cyan); }
+    .trust-item strong { display: block; margin-bottom: 3px; }
     .client-name { font-weight: 950; }
     .client-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
     .client-unknown { color: var(--amber); }
@@ -261,6 +320,48 @@
     .warn { color: var(--amber); border-color: rgba(247,185,85,.45); background: rgba(247,185,85,.09); }
     .detail { display: grid; gap: 12px; }
     .detail-row { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid rgba(34,56,71,.7); padding-bottom: 10px; }
+    .detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: none;
+      background: rgba(3,10,14,.72);
+      backdrop-filter: blur(8px);
+      padding: 24px;
+      overflow: auto;
+    }
+    .detail-overlay.active { display: grid; place-items: start end; }
+    .entity-detail {
+      width: min(760px, 100%);
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      border: 1px solid rgba(67,217,239,.34);
+      border-radius: 22px;
+      background: linear-gradient(145deg, rgba(13,26,34,.98), rgba(6,16,22,.98));
+      box-shadow: 0 24px 90px rgba(0,0,0,.44);
+      padding: 20px;
+    }
+    .entity-detail-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      border-bottom: 1px solid rgba(34,56,71,.75);
+      padding-bottom: 16px;
+      margin-bottom: 16px;
+    }
+    .entity-detail-header h2 { margin: 4px 0 8px; font-size: clamp(22px, 3vw, 32px); letter-spacing: -0.04em; }
+    .entity-section { margin-top: 18px; }
+    .entity-section h3 { margin: 0 0 10px; font-size: 15px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .detail-tile {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 15px;
+      background: rgba(6,16,22,.45);
+      padding: 12px;
+    }
+    .detail-tile .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+    .detail-tile .value { margin-top: 6px; font-weight: 950; word-break: break-word; }
     pre {
       white-space: pre-wrap;
       overflow: auto;
@@ -284,8 +385,10 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
+      .trust-grid, .utilization-grid, .detail-grid { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
+      .detail-overlay { padding: 12px; }
       .network-map {
         grid-template-columns: 1fr;
         gap: 14px;
@@ -524,53 +627,6 @@
       </section>
     </section>
 
-    <section id="page-clients" class="page" data-page="clients">
-      <div class="page-hero">
-        <div>
-          <div class="eyebrow">Client inventory</div>
-          <h2>Connected clients</h2>
-          <p class="subtle">Search and filter the phones, laptops, IoT devices, and VPN clients reported by the UniFi Network API.</p>
-        </div>
-        <span id="clientStatus" class="subtle">Waiting for client data...</span>
-      </div>
-      <section class="card unifi-panel">
-        <div id="clientNotice" class="notice">Enable the local UniFi Network API collector to populate this section.</div>
-        <div id="clientGrid" class="unifi-grid"></div>
-      </section>
-      <section class="card panel">
-        <div class="toolbar">
-          <h2>Client list</h2>
-          <div class="client-filters">
-            <input id="clientSearch" type="search" aria-label="Search clients" placeholder="Search name, IP, MAC, network...">
-            <select id="clientTypeFilter" aria-label="Client type filter">
-              <option value="all">All types</option>
-              <option value="wired">Wired</option>
-              <option value="wireless">Wireless</option>
-              <option value="vpn">VPN</option>
-              <option value="unknown">Unknown</option>
-            </select>
-            <select id="clientIdentityFilter" aria-label="Client identity filter">
-              <option value="all">All clients</option>
-              <option value="named">Named only</option>
-              <option value="unnamed">Needs naming</option>
-            </select>
-          </div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Client</th>
-              <th>IP</th>
-              <th>MAC</th>
-              <th>Access</th>
-              <th>Connected</th>
-            </tr>
-          </thead>
-          <tbody id="clientBody"></tbody>
-        </table>
-      </section>
-    </section>
-
     <section id="page-collection-health" class="page" data-page="collection-health">
       <div class="page-hero">
         <div>
@@ -652,6 +708,20 @@
       </section>
     </section>
   </main>
+
+  <div id="entityDetailOverlay" class="detail-overlay" aria-hidden="true">
+    <aside class="entity-detail" role="dialog" aria-modal="true" aria-labelledby="entityDetailTitle">
+      <div class="entity-detail-header">
+        <div>
+          <div id="entityDetailType" class="eyebrow">Detail</div>
+          <h2 id="entityDetailTitle">Select a device or client</h2>
+          <div id="entityDetailSubtitle" class="subtle">Click a UniFi device, utilization item, or client row to inspect it.</div>
+        </div>
+        <button id="closeEntityDetail" type="button" aria-label="Close detail">Close</button>
+      </div>
+      <div id="entityDetailBody" class="detail"></div>
+    </aside>
+  </div>
 
   <script>
     const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
@@ -866,6 +936,9 @@
       const topClients = insights.top_clients || [];
       const activeSites = siteManagerSites.filter(site => String(site.permission || '').length || site.isOwner).length;
       const onlineDevices = siteManagerDevices.filter(isOnlineDevice).length;
+      const offlineDevices = siteManagerDevices.filter(device => !isOnlineDevice(device)).length;
+      const untrustedClients = clients.filter(client => !isTrustedClient(client)).length;
+      const unnamedClients = clients.filter(isUnnamedClient).length;
       grid.innerHTML = `
         ${renderInsightCard('Site Manager coverage', [
           ['Sites', siteManagerSites.length],
@@ -885,10 +958,16 @@
           ['Active clients', insights.active_client_count || 0],
           ['High CPU / memory', insights.stressed_device_count || 0],
         ])}
+        ${renderInsightCard('Needs attention', [
+          ['Offline devices', offlineDevices],
+          ['Untrusted clients', untrustedClients],
+          ['Clients needing names', unnamedClients],
+          ['High CPU / memory', insights.stressed_device_count || 0],
+        ])}
         ${renderInsightCard('Account health', [
           ['Accessible sites', activeSites],
           ['Online devices', onlineDevices],
-          ['Offline devices', Math.max(siteManagerDevices.length - onlineDevices, 0)],
+          ['Offline devices', offlineDevices],
           ['Site Manager warnings', Object.keys(siteManagerErrors).length],
         ])}
         <div class="insight-card">
@@ -906,7 +985,7 @@
           <h3>Infrastructure devices</h3>
           <div class="insight-list">
             ${siteManagerDevices.slice(0, 6).map(device => `
-              <div class="insight-item">
+              <div class="insight-item" data-detail-kind="device" data-detail-id="${escapeAttr(entityKey(device))}">
                 <span><span class="insight-name">${escapeHtml(deviceName(device))}</span><br><span class="subtle">${escapeHtml(deviceModel(device))}</span></span>
                 <span class="pill ${isOnlineDevice(device) ? 'ok' : 'warn'}">${escapeHtml(deviceStatus(device))}</span>
               </div>
@@ -917,8 +996,8 @@
           <h3>Local client telemetry</h3>
           <div class="insight-list">
             ${clients.slice(0, 5).map(client => `
-              <div class="insight-item">
-                <span><span class="insight-name">${escapeHtml(client.name || client.macAddress || client.id || 'Unknown client')}</span><br><span class="subtle">${escapeHtml(client.ipAddress || client.type || '')}</span></span>
+              <div class="insight-item" data-detail-kind="client" data-detail-id="${escapeAttr(entityKey(client))}">
+                <span><span class="insight-name">${escapeHtml(clientName(client))}</span><br><span class="subtle">${escapeHtml(client.ipAddress || client.type || '')}</span></span>
                 <span class="pill ${client.connectedAt ? 'ok' : 'warn'}">${client.connectedAt ? 'active' : 'seen'}</span>
               </div>
             `).join('') || '<span class="subtle">Waiting on a local Network API key before client lists and traffic counters are available.</span>'}
@@ -952,6 +1031,8 @@
             <div class="utilization-list">${renderClientUtilization(topClients)}</div>
           </div>
       `;
+      attachEntityDetailHandlers(grid);
+      attachEntityDetailHandlers(utilization);
     }
 
     function renderClients() {
@@ -1035,6 +1116,7 @@
           <td>${clientTrafficLabel(client)}</td>
           <td>${formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')}</td>
         `;
+        row.addEventListener('click', () => openClientDetail(client));
         body.appendChild(row);
       }
       if (!filtered.length) {
@@ -1053,7 +1135,7 @@
         const memory = Number(device.memory_pct || 0);
         const stress = cpu >= 80 || memory >= 80;
         return `
-          <div class="utilization-item">
+          <div class="utilization-item" data-detail-kind="device" data-detail-id="${escapeAttr(entityKey(device))}">
             <div class="utilization-title">
               <strong>${escapeHtml(device.name || 'Unknown device')}</strong>
               <span class="pill ${stress ? 'warn' : 'ok'}">${formatRate(rate)}</span>
@@ -1069,7 +1151,7 @@
       if (!clients.length) return '<span class="subtle">No client traffic data returned yet.</span>';
       const maxBytes = Math.max(...clients.map(client => Number(client.total_bytes || 0)), 1);
       return clients.slice(0, 8).map(client => `
-        <div class="utilization-item">
+        <div class="utilization-item" data-detail-kind="client" data-detail-id="${escapeAttr(entityKey(client))}">
           <div class="utilization-title">
             <strong>${escapeHtml(client.name || 'Unknown client')}</strong>
             <span class="pill ok">${formatBytes(client.total_bytes || 0)}</span>
@@ -1100,6 +1182,8 @@
         untrustedClients,
         'No unknown or untrusted clients returned in the latest snapshot.'
       );
+      attachEntityDetailHandlers($('trustedClientList'));
+      attachEntityDetailHandlers($('untrustedClientList'));
     }
 
     function renderTrustList(clients, emptyText) {
@@ -1108,7 +1192,7 @@
         const trusted = isTrustedClient(client);
         const label = trusted ? client.trustedCategory || 'trusted' : 'review';
         return `
-          <div class="trust-item">
+          <div class="trust-item" data-detail-kind="client" data-detail-id="${escapeAttr(entityKey(client))}">
             <span>
               <strong>${escapeHtml(clientName(client))}</strong>
               <span class="subtle">${escapeHtml(client.ipAddress || client.ip || 'No IP')} &bull; ${escapeHtml(client.macAddress || client.mac || 'No MAC')}</span>
@@ -1117,6 +1201,143 @@
           </div>
         `;
       }).join('') + (clients.length > 12 ? `<span class="subtle">+ ${clients.length - 12} more shown in the full client list.</span>` : '');
+    }
+
+    function attachEntityDetailHandlers(root) {
+      root.querySelectorAll('[data-detail-kind]').forEach(item => {
+        item.addEventListener('click', () => openEntityDetailFromId(
+          item.getAttribute('data-detail-kind'),
+          item.getAttribute('data-detail-id')
+        ));
+      });
+    }
+
+    function openEntityDetailFromId(kind, id) {
+      const entity = findEntity(kind, id);
+      if (!entity) return;
+      if (kind === 'device') openDeviceDetail(entity);
+      if (kind === 'client') openClientDetail(entity);
+    }
+
+    function findEntity(kind, id) {
+      const snapshot = state.unifi || {};
+      const insights = snapshot.traffic_insights || {};
+      const source = kind === 'device'
+        ? [...(insights.top_devices || []), ...(snapshot.devices || []), ...(snapshot.site_manager_devices || [])]
+        : [...(insights.top_clients || []), ...(snapshot.clients || [])];
+      return source.find(item => entityKey(item) === id);
+    }
+
+    function openDeviceDetail(device) {
+      openEntityDetail({
+        type: 'Device details',
+        title: deviceName(device),
+        subtitle: `${deviceModel(device) || 'UniFi device'} • ${device.ipAddress || device.ip || 'No IP'} • ${device.macAddress || device.mac || 'No MAC'}`,
+        statusClass: isOnlineDevice(device) || String(device.state || '').toLowerCase() === 'online' ? 'ok' : 'warn',
+        status: deviceStatus(device) || device.state || 'unknown',
+        sections: [
+          ['Identity', [
+            ['Name', deviceName(device)],
+            ['Model', deviceModel(device) || device.model || '-'],
+            ['IP address', device.ipAddress || device.ip || '-'],
+            ['MAC address', device.macAddress || device.mac || '-'],
+            ['Firmware', device.firmwareVersion || device.version || '-'],
+            ['State', deviceStatus(device) || device.state || '-'],
+          ]],
+          ['Utilization', [
+            ['Throughput', formatRate(device.total_rate_bps || 0)],
+            ['RX rate', formatRate(device.rx_rate_bps || 0)],
+            ['TX rate', formatRate(device.tx_rate_bps || 0)],
+            ['Traffic total', formatBytes(device.total_bytes || 0)],
+            ['CPU', formatPercent(device.cpu_pct || 0)],
+            ['Memory', formatPercent(device.memory_pct || 0)],
+          ]],
+          ['Hardware / connections', [
+            ['Ports', device.port_count ?? device.ports?.length ?? '-'],
+            ['Radios', device.radio_count ?? device.radios?.length ?? '-'],
+            ['Uplink', device.uplink_name || device.uplinkDeviceId || '-'],
+            ['Downlinks', device.downlink_count ?? '-'],
+            ['Features', Array.isArray(device.features) ? device.features.join(', ') : '-'],
+            ['Interfaces', Array.isArray(device.interfaces) ? device.interfaces.join(', ') : '-'],
+          ]],
+        ],
+        raw: device.raw || device,
+      });
+    }
+
+    function openClientDetail(client) {
+      const trusted = isTrustedClient(client);
+      openEntityDetail({
+        type: 'Client details',
+        title: clientName(client),
+        subtitle: `${client.ipAddress || client.ip || 'No IP'} • ${client.macAddress || client.mac || 'No MAC'} • ${clientType(client)}`,
+        statusClass: trusted ? 'ok' : 'warn',
+        status: trusted ? client.trustedCategory || 'trusted' : 'needs review',
+        sections: [
+          ['Identity', [
+            ['Name', clientName(client)],
+            ['IP address', client.ipAddress || client.ip || '-'],
+            ['MAC address', client.macAddress || client.mac || '-'],
+            ['Access type', clientType(client)],
+            ['Network', client.network || client.type || '-'],
+            ['Client ID', client.id || '-'],
+          ]],
+          ['Trust and triage', [
+            ['Trust status', trusted ? 'Trusted / watched' : 'Unknown / untrusted'],
+            ['Trusted name', client.trustedName || '-'],
+            ['Category', client.trustedCategory || (trusted ? 'trusted' : 'untrusted')],
+            ['Needs naming', isUnnamedClient(client) ? 'Yes' : 'No'],
+            ['Connected', formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')],
+            ['Normalized MAC', client.normalizedMac || '-'],
+          ]],
+          ['Traffic', [
+            ['Total traffic', formatBytes(clientTotalBytes(client))],
+            ['Download / RX', formatBytes(clientRxBytes(client))],
+            ['Upload / TX', formatBytes(clientTxBytes(client))],
+            ['Current rate', formatRate(clientTotalRate(client))],
+            ['RX rate', formatRate(clientRxRate(client))],
+            ['TX rate', formatRate(clientTxRate(client))],
+          ]],
+        ],
+        raw: client.raw || client,
+      });
+    }
+
+    function openEntityDetail({ type, title, subtitle, statusClass, status, sections, raw }) {
+      $('entityDetailType').textContent = type;
+      $('entityDetailTitle').textContent = title || 'Unknown';
+      $('entityDetailSubtitle').textContent = subtitle || '';
+      $('entityDetailBody').innerHTML = `
+        <div><span class="pill ${statusClass || 'warn'}">${escapeHtml(status || 'unknown')}</span></div>
+        ${sections.map(([heading, rows]) => `
+          <div class="entity-section">
+            <h3>${escapeHtml(heading)}</h3>
+            <div class="detail-grid">
+              ${rows.map(([label, value]) => `
+                <div class="detail-tile">
+                  <div class="label">${escapeHtml(label)}</div>
+                  <div class="value">${escapeHtml(value ?? '-')}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+        <div class="entity-section">
+          <h3>API evidence</h3>
+          <pre>${escapeHtml(JSON.stringify(raw || {}, null, 2))}</pre>
+        </div>
+      `;
+      $('entityDetailOverlay').classList.add('active');
+      $('entityDetailOverlay').setAttribute('aria-hidden', 'false');
+    }
+
+    function closeEntityDetail() {
+      $('entityDetailOverlay').classList.remove('active');
+      $('entityDetailOverlay').setAttribute('aria-hidden', 'true');
+    }
+
+    function entityKey(item) {
+      return String(item?.id || item?.deviceId || item?.macAddress || item?.mac || item?.normalizedMac || item?.ipAddress || item?.ip || item?.name || '');
     }
 
     function filteredClients(clients) {
@@ -1166,116 +1387,28 @@
       return 'unknown';
     }
 
-    function renderClients() {
-      const snapshot = state.unifi || {};
-      const notice = $('clientNotice');
-      const grid = $('clientGrid');
-      const status = $('clientStatus');
-      const body = $('clientBody');
-      const clients = snapshot.clients || [];
-      const filtered = filteredClients(clients);
-      grid.innerHTML = '';
-      body.innerHTML = '';
-
-      if (!snapshot.api_enabled) {
-        status.textContent = 'Collector disabled';
-        notice.style.display = 'block';
-        notice.textContent = 'Set UNIFI_API_ENABLED=true with a local Network API key to populate connected clients.';
-      } else if (snapshot.network_error) {
-        status.textContent = 'Local Network API unavailable';
-        notice.style.display = 'block';
-        notice.textContent = snapshot.network_error;
-      } else if (!clients.length) {
-        status.textContent = 'No clients returned';
-        notice.style.display = 'block';
-        notice.textContent = 'The local Network API is connected, but no client records were returned in the latest snapshot.';
-      } else {
-        status.textContent = `${filtered.length} of ${clients.length} clients shown`;
-        notice.style.display = 'none';
-      }
-
-      const named = clients.filter(client => !isUnnamedClient(client)).length;
-      const unnamed = Math.max(clients.length - named, 0);
-      const wireless = clients.filter(client => clientType(client) === 'wireless').length;
-      const wired = clients.filter(client => clientType(client) === 'wired').length;
-      const vpn = clients.filter(client => clientType(client) === 'vpn').length;
-      grid.innerHTML = `
-        ${renderInsightCard('Inventory coverage', [
-          ['Total clients', clients.length],
-          ['Named clients', named],
-          ['Need naming', unnamed],
-        ])}
-        ${renderInsightCard('Access mix', [
-          ['Wireless', wireless],
-          ['Wired', wired],
-          ['VPN', vpn],
-        ])}
-        ${renderInsightCard('Current view', [
-          ['Shown', filtered.length],
-          ['Hidden by filters', Math.max(clients.length - filtered.length, 0)],
-          ['Updated', formatDate(snapshot.checked_at)],
-        ])}
-      `;
-
-      for (const client of filtered) {
-        const row = document.createElement('tr');
-        const unnamedClient = isUnnamedClient(client);
-        row.innerHTML = `
-          <td>
-            <div class="client-name ${unnamedClient ? 'client-unknown' : ''}">${escapeHtml(clientName(client))}</div>
-            <div class="client-meta">${escapeHtml(client.id || client.type || '-')}</div>
-          </td>
-          <td>${escapeHtml(client.ipAddress || client.ip || '-')}</td>
-          <td>${escapeHtml(client.macAddress || client.mac || '-')}</td>
-          <td><span class="pill ${unnamedClient ? 'warn' : 'ok'}">${escapeHtml(clientType(client))}</span></td>
-          <td>${formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')}</td>
-        `;
-        body.appendChild(row);
-      }
-      if (!filtered.length) {
-        const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="5" class="subtle">No clients match the current filters.</td>';
-        body.appendChild(row);
-      }
+    function clientRxBytes(client) {
+      return Number(client.rxBytes || client.rx_bytes || client.bytesIn || client.wiredRxBytes || client.wirelessRxBytes || 0);
     }
 
-    function filteredClients(clients) {
-      const query = $('clientSearch').value.trim().toLowerCase();
-      const type = $('clientTypeFilter').value;
-      const identity = $('clientIdentityFilter').value;
-      return clients.filter(client => {
-        if (type !== 'all' && clientType(client) !== type) return false;
-        if (identity === 'named' && isUnnamedClient(client)) return false;
-        if (identity === 'unnamed' && !isUnnamedClient(client)) return false;
-        if (!query) return true;
-        return [
-          clientName(client),
-          client.ipAddress,
-          client.ip,
-          client.macAddress,
-          client.mac,
-          client.type,
-          client.network,
-          client.id,
-        ].some(value => String(value || '').toLowerCase().includes(query));
-      });
+    function clientTxBytes(client) {
+      return Number(client.txBytes || client.tx_bytes || client.bytesOut || client.wiredTxBytes || client.wirelessTxBytes || 0);
     }
 
-    function clientName(client) {
-      return client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
+    function clientTotalBytes(client) {
+      return Number(client.total_bytes || 0) || clientRxBytes(client) + clientTxBytes(client);
     }
 
-    function isUnnamedClient(client) {
-      const name = String(client.name || client.hostname || client.displayName || '').trim();
-      return !name || /^unknown/i.test(name) || name === String(client.macAddress || client.mac || '').trim();
+    function clientRxRate(client) {
+      return Number(client.rxRateBps || client.rx_rate_bps || client.wiredRxRateBps || client.wirelessRxRateBps || 0);
     }
 
-    function clientType(client) {
-      const raw = `${client.type || ''} ${client.network || ''} ${client.access?.type || ''}`.toLowerCase();
-      if (raw.includes('vpn')) return 'vpn';
-      if (raw.includes('wireless') || raw.includes('wifi') || raw.includes('wi-fi')) return 'wireless';
-      if (raw.includes('wired') || raw.includes('ethernet')) return 'wired';
-      return 'unknown';
+    function clientTxRate(client) {
+      return Number(client.txRateBps || client.tx_rate_bps || client.wiredTxRateBps || client.wirelessTxRateBps || 0);
+    }
+
+    function clientTotalRate(client) {
+      return Number(client.total_rate_bps || 0) || clientRxRate(client) + clientTxRate(client);
     }
 
     function renderDiscovery() {
@@ -1479,6 +1612,10 @@
       return amount ? `${amount.toFixed(0)}%` : '-';
     }
 
+    function escapeAttr(value) {
+      return escapeHtml(value);
+    }
+
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
@@ -1490,6 +1627,13 @@
     $('clientSearch').addEventListener('input', renderClients);
     $('clientTypeFilter').addEventListener('change', renderClients);
     $('clientIdentityFilter').addEventListener('change', renderClients);
+    $('closeEntityDetail').addEventListener('click', closeEntityDetail);
+    $('entityDetailOverlay').addEventListener('click', event => {
+      if (event.target === $('entityDetailOverlay')) closeEntityDetail();
+    });
+    window.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeEntityDetail();
+    });
     window.addEventListener('hashchange', renderPage);
     $('runChecks').addEventListener('click', async () => {
       $('runChecks').disabled = true;
