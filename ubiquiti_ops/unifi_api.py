@@ -22,6 +22,9 @@ class UniFiApiConfig:
     verify_tls: bool = False
     timeout_seconds: int = 10
     legacy_stats_enabled: bool = True
+    site_manager_enabled: bool = False
+    site_manager_base_url: str = "https://api.ui.com"
+    site_manager_api_key: str = ""
 
 
 class UniFiApiClient:
@@ -38,41 +41,82 @@ class UniFiApiClient:
             verify_tls=config.unifi_verify_tls,
             timeout_seconds=config.unifi_timeout_seconds,
             legacy_stats_enabled=config.unifi_legacy_stats_enabled,
+            site_manager_enabled=config.unifi_site_manager_enabled,
+            site_manager_base_url=config.unifi_site_manager_base_url,
+            site_manager_api_key=config.unifi_site_manager_api_key or config.unifi_api_key,
         ))
 
     def collect(self) -> dict:
         started = time.perf_counter()
         checked_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        if not self.config.api_key:
-            return error_snapshot("UniFi API key is not configured", checked_at, started)
+        site_manager_key = self.config.site_manager_api_key
+        if not self.config.api_key and not site_manager_key:
+            return error_snapshot("No UniFi API key is configured", checked_at, started)
 
-        try:
-            sites = self.list_sites()
-            site_id = self.config.site_id or infer_site_id(sites)
-            if not site_id:
-                return error_snapshot("No UniFi site was found. Set UNIFI_SITE_ID in .env.", checked_at, started)
+        sites: list[dict] = []
+        devices: list[dict] = []
+        clients: list[dict] = []
+        site_manager_sites: list[dict] = []
+        site_manager_hosts: list[dict] = []
+        site_manager_devices: list[dict] = []
+        site_manager_isp_metrics: list[dict] = []
+        site_manager_errors: dict[str, str] = {}
+        device_stats: list[dict] = []
+        legacy_stats: dict = {}
+        site_id = self.config.site_id
+        network_error = ""
+        site_manager_error = ""
 
-            devices = self.list_devices(site_id)
-            clients = self.list_clients(site_id)
-            device_stats = self.collect_device_statistics(site_id, devices)
-            legacy_stats = self.collect_legacy_stats(site_id) if self.config.legacy_stats_enabled else {}
-            insights = build_traffic_insights(devices, clients, device_stats, legacy_stats)
-            return {
-                "ok": True,
-                "checked_at": checked_at,
-                "latency_ms": elapsed_ms(started),
-                "site_id": site_id,
-                "sites": sites,
-                "devices": devices,
-                "clients": clients,
-                "device_statistics": device_stats,
-                "legacy_stats": legacy_stats,
-                "traffic_insights": insights,
-                "error": "",
-            }
-        except Exception as exc:  # noqa: BLE001
-            LOG.exception("UniFi API collection failed")
-            return error_snapshot(str(exc), checked_at, started)
+        if self.config.api_key:
+            try:
+                sites = self.list_sites()
+                site_id = site_id or infer_site_id(sites)
+                if not site_id:
+                    network_error = "No UniFi site was found. Set UNIFI_SITE_ID in .env."
+                else:
+                    devices = self.list_devices(site_id)
+                    clients = self.list_clients(site_id)
+                    device_stats = self.collect_device_statistics(site_id, devices)
+                    legacy_stats = self.collect_legacy_stats(site_id) if self.config.legacy_stats_enabled else {}
+            except Exception as exc:  # noqa: BLE001
+                network_error = str(exc)
+                LOG.warning("UniFi Network API collection failed: %s", exc)
+        else:
+            network_error = "UNIFI_API_KEY is not configured; local Network API collection skipped."
+
+        if self.config.site_manager_enabled:
+            site_manager = self.collect_site_manager()
+            site_manager_sites = site_manager["sites"]
+            site_manager_hosts = site_manager["hosts"]
+            site_manager_devices = site_manager["devices"]
+            site_manager_isp_metrics = site_manager["isp_metrics"]
+            site_manager_errors = site_manager["errors"]
+            site_manager_error = "; ".join(f"{key}: {value}" for key, value in site_manager_errors.items())
+
+        insights = build_traffic_insights(devices, clients, device_stats, legacy_stats)
+        site_manager_has_data = any((site_manager_sites, site_manager_hosts, site_manager_devices, site_manager_isp_metrics))
+        ok = not network_error or site_manager_has_data
+        error = network_error or site_manager_error
+        return {
+            "ok": ok,
+            "checked_at": checked_at,
+            "latency_ms": elapsed_ms(started),
+            "site_id": site_id,
+            "sites": sites,
+            "devices": devices,
+            "clients": clients,
+            "site_manager_sites": site_manager_sites,
+            "site_manager_hosts": site_manager_hosts,
+            "site_manager_devices": site_manager_devices,
+            "site_manager_isp_metrics": site_manager_isp_metrics,
+            "site_manager_errors": site_manager_errors,
+            "device_statistics": device_stats,
+            "legacy_stats": legacy_stats,
+            "traffic_insights": insights,
+            "network_error": network_error,
+            "site_manager_error": site_manager_error,
+            "error": error,
+        }
 
     def list_sites(self) -> list[dict]:
         return self._paged("/v1/sites")
@@ -115,33 +159,109 @@ class UniFiApiClient:
                 output[f"{key}_error"] = str(exc)
         return output
 
+    def list_site_manager_devices(self) -> list[dict]:
+        if not self.config.site_manager_api_key:
+            return []
+        return self._site_manager_paged("/v1/devices")
+
+    def list_site_manager_sites(self) -> list[dict]:
+        if not self.config.site_manager_api_key:
+            return []
+        return self._site_manager_paged("/v1/sites")
+
+    def list_site_manager_hosts(self) -> list[dict]:
+        if not self.config.site_manager_api_key:
+            return []
+        return self._site_manager_paged("/v1/hosts")
+
+    def list_site_manager_isp_metrics(self) -> list[dict]:
+        if not self.config.site_manager_api_key:
+            return []
+        return self._site_manager_paged("/v1/isp-metrics")
+
+    def collect_site_manager(self) -> dict:
+        output: dict[str, Any] = {
+            "sites": [],
+            "hosts": [],
+            "devices": [],
+            "isp_metrics": [],
+            "errors": {},
+        }
+        for key, collector in {
+            "sites": self.list_site_manager_sites,
+            "hosts": self.list_site_manager_hosts,
+            "devices": self.list_site_manager_devices,
+            "isp_metrics": self.list_site_manager_isp_metrics,
+        }.items():
+            try:
+                output[key] = collector()
+            except Exception as exc:  # noqa: BLE001
+                output["errors"][key] = str(exc)
+                LOG.warning("UniFi Site Manager %s collection failed: %s", key, exc)
+        return output
+
     def _paged(self, path: str, limit: int = 200) -> list[dict]:
+        return self._paged_url(f"{self.config.base_url}{path}", limit=limit)
+
+    def _paged_url(self, url: str, limit: int = 200, api_key: str | None = None, verify_tls: bool | None = None) -> list[dict]:
         items: list[dict] = []
         offset = 0
         while True:
-            separator = "&" if "?" in path else "?"
-            payload = self._get(f"{path}{separator}offset={offset}&limit={limit}")
-            data = payload.get("data", payload if isinstance(payload, list) else [])
+            separator = "&" if "?" in url else "?"
+            payload = self._request_json(
+                f"{url}{separator}offset={offset}&limit={limit}",
+                api_key=api_key,
+                verify_tls=verify_tls,
+            )
+            if isinstance(payload, list):
+                data = payload
+                total = len(items) + len(data)
+                count = len(data)
+            else:
+                data = payload.get("data", [])
+                total = payload.get("totalCount", payload.get("total", len(items) + len(data)))
+                count = payload.get("count", len(data))
             if not isinstance(data, list):
                 data = []
             items.extend(data)
-            total = payload.get("totalCount", payload.get("total", len(items)))
-            count = payload.get("count", len(data))
             if not data or offset + count >= total:
                 break
             offset += limit
         return items
 
+    def _site_manager_paged(self, path: str, limit: int = 200) -> list[dict]:
+        items: list[dict] = []
+        next_token = ""
+        while True:
+            query = {"pageSize": str(limit)}
+            if next_token:
+                query["nextToken"] = next_token
+            url = f"{self.config.site_manager_base_url}{path}?{parse.urlencode(query)}"
+            payload = self._request_json(
+                url,
+                api_key=self.config.site_manager_api_key,
+                verify_tls=True,
+            )
+            data = payload if isinstance(payload, list) else payload.get("data", [])
+            if not isinstance(data, list):
+                data = []
+            items.extend(data)
+            next_token = "" if isinstance(payload, list) else str(payload.get("nextToken") or "")
+            if not data or not next_token:
+                break
+        return items
+
     def _get(self, path: str) -> dict:
         return self._request_json(f"{self.config.base_url}{path}")
 
-    def _request_json(self, url: str) -> dict:
+    def _request_json(self, url: str, api_key: str | None = None, verify_tls: bool | None = None) -> dict:
         req = request.Request(url, headers={
             "Accept": "application/json",
-            "X-API-Key": self.config.api_key,
+            "X-API-Key": api_key or self.config.api_key,
             "User-Agent": "UbiquitiOpsConsole/0.2",
         })
-        with request.urlopen(req, timeout=self.config.timeout_seconds, context=self._ssl_context) as response:
+        context = None if verify_tls else self._ssl_context
+        with request.urlopen(req, timeout=self.config.timeout_seconds, context=context) as response:
             body = response.read().decode("utf-8")
         return json.loads(body) if body else {}
 
@@ -290,8 +410,15 @@ def error_snapshot(error: str, checked_at: str, started: float) -> dict:
         "sites": [],
         "devices": [],
         "clients": [],
+        "site_manager_sites": [],
+        "site_manager_hosts": [],
+        "site_manager_devices": [],
+        "site_manager_isp_metrics": [],
+        "site_manager_errors": {},
         "device_statistics": [],
         "legacy_stats": {},
+        "network_error": error,
+        "site_manager_error": "",
         "traffic_insights": {
             "client_count": 0,
             "device_count": 0,

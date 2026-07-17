@@ -31,6 +31,9 @@ class ConfigTests(unittest.TestCase):
             "UNIFI_VERIFY_TLS": "false",
             "UNIFI_TIMEOUT_SECONDS": "12",
             "UNIFI_LEGACY_STATS_ENABLED": "false",
+            "UNIFI_SITE_MANAGER_ENABLED": "true",
+            "UNIFI_SITE_MANAGER_BASE_URL": "https://api.ui.com/",
+            "UNIFI_SITE_MANAGER_API_KEY": "site-manager-key",
         }):
             config = Config.from_env()
         self.assertTrue(config.unifi_api_enabled)
@@ -40,6 +43,9 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.unifi_verify_tls)
         self.assertEqual(config.unifi_timeout_seconds, 12)
         self.assertFalse(config.unifi_legacy_stats_enabled)
+        self.assertTrue(config.unifi_site_manager_enabled)
+        self.assertEqual(config.unifi_site_manager_base_url, "https://api.ui.com")
+        self.assertEqual(config.unifi_site_manager_api_key, "site-manager-key")
 
 
 if __name__ == "__main__":

@@ -31,7 +31,10 @@ class OpsHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/unifi":
             snapshot = self.store.latest_unifi_snapshot()
             snapshot["api_enabled"] = self.config.unifi_api_enabled
-            snapshot["api_configured"] = bool(self.config.unifi_api_enabled and self.config.unifi_api_key)
+            snapshot["api_configured"] = bool(
+                self.config.unifi_api_enabled
+                and (self.config.unifi_api_key or self.config.unifi_site_manager_api_key)
+            )
             self._json(snapshot)
             return
         if parsed.path == "/api/history":

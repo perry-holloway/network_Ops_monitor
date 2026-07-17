@@ -36,6 +36,9 @@ class Config:
     unifi_verify_tls: bool
     unifi_timeout_seconds: int
     unifi_legacy_stats_enabled: bool
+    unifi_site_manager_enabled: bool
+    unifi_site_manager_base_url: str
+    unifi_site_manager_api_key: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -56,6 +59,9 @@ class Config:
             unifi_verify_tls=_bool("UNIFI_VERIFY_TLS", False),
             unifi_timeout_seconds=max(3, _int("UNIFI_TIMEOUT_SECONDS", 10)),
             unifi_legacy_stats_enabled=_bool("UNIFI_LEGACY_STATS_ENABLED", True),
+            unifi_site_manager_enabled=_bool("UNIFI_SITE_MANAGER_ENABLED", False),
+            unifi_site_manager_base_url=os.getenv("UNIFI_SITE_MANAGER_BASE_URL", "https://api.ui.com").rstrip("/"),
+            unifi_site_manager_api_key=os.getenv("UNIFI_SITE_MANAGER_API_KEY", "").strip(),
         )
 
 
