@@ -216,6 +216,11 @@
     .insight-item { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(34,56,71,.55); padding-top: 9px; }
     .insight-name { font-weight: 850; }
     .insight-value { color: var(--cyan); font-weight: 900; white-space: nowrap; }
+    .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
+    .client-filters input { min-width: min(360px, 100%); }
+    .client-name { font-weight: 950; }
+    .client-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .client-unknown { color: var(--amber); }
     .notice {
       border: 1px dashed var(--line);
       border-radius: 14px;
@@ -277,6 +282,8 @@
     }
     @media (max-width: 900px) {
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
+      .client-filters { width: 100%; }
+      .client-filters input, .client-filters select { width: 100%; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .network-map {
@@ -320,6 +327,7 @@
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
     <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
+    <a href="#clients" data-page-link="clients">Clients</a>
     <a href="#discovery" data-page-link="discovery">LAN Discovery</a>
   </nav>
 
@@ -395,6 +403,14 @@
         </div>
         <div class="card nav-card">
           <div>
+            <div class="eyebrow">Clients</div>
+            <h3>Client inventory</h3>
+            <p class="subtle">Search connected clients, identify unknown devices, and review IP, MAC, and access details.</p>
+          </div>
+          <a class="page-link" href="#clients">Open clients page</a>
+        </div>
+        <div class="card nav-card">
+          <div>
             <div class="eyebrow">Discovery</div>
             <h3>LAN device scan</h3>
             <p class="subtle">Find devices visible on configured local subnets, even before UniFi client API access is available.</p>
@@ -436,6 +452,53 @@
       <section class="card unifi-panel">
         <div id="unifiNotice" class="notice">Enable the UniFi API collector in .env to populate this section.</div>
         <div id="unifiGrid" class="unifi-grid"></div>
+      </section>
+    </section>
+
+    <section id="page-clients" class="page" data-page="clients">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Client inventory</div>
+          <h2>Connected clients</h2>
+          <p class="subtle">Search and filter the phones, laptops, IoT devices, and VPN clients reported by the UniFi Network API.</p>
+        </div>
+        <span id="clientStatus" class="subtle">Waiting for client data...</span>
+      </div>
+      <section class="card unifi-panel">
+        <div id="clientNotice" class="notice">Enable the local UniFi Network API collector to populate this section.</div>
+        <div id="clientGrid" class="unifi-grid"></div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <h2>Client list</h2>
+          <div class="client-filters">
+            <input id="clientSearch" type="search" aria-label="Search clients" placeholder="Search name, IP, MAC, network...">
+            <select id="clientTypeFilter" aria-label="Client type filter">
+              <option value="all">All types</option>
+              <option value="wired">Wired</option>
+              <option value="wireless">Wireless</option>
+              <option value="vpn">VPN</option>
+              <option value="unknown">Unknown</option>
+            </select>
+            <select id="clientIdentityFilter" aria-label="Client identity filter">
+              <option value="all">All clients</option>
+              <option value="named">Named only</option>
+              <option value="unnamed">Needs naming</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>IP</th>
+              <th>MAC</th>
+              <th>Access</th>
+              <th>Connected</th>
+            </tr>
+          </thead>
+          <tbody id="clientBody"></tbody>
+        </table>
       </section>
     </section>
 
@@ -522,7 +585,7 @@
   </main>
 
   <script>
-    const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'discovery'];
+    const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
     const state = { summary: null, unifi: null, discovery: null, speed: null, selected: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
@@ -541,6 +604,7 @@
       renderSpeedTest();
       renderDiagram();
       renderUnifi();
+      renderClients();
       renderDiscovery();
       renderTable();
       $('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
@@ -791,6 +855,118 @@
       `;
     }
 
+    function renderClients() {
+      const snapshot = state.unifi || {};
+      const notice = $('clientNotice');
+      const grid = $('clientGrid');
+      const status = $('clientStatus');
+      const body = $('clientBody');
+      const clients = snapshot.clients || [];
+      const filtered = filteredClients(clients);
+      grid.innerHTML = '';
+      body.innerHTML = '';
+
+      if (!snapshot.api_enabled) {
+        status.textContent = 'Collector disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set UNIFI_API_ENABLED=true with a local Network API key to populate connected clients.';
+      } else if (snapshot.network_error) {
+        status.textContent = 'Local Network API unavailable';
+        notice.style.display = 'block';
+        notice.textContent = snapshot.network_error;
+      } else if (!clients.length) {
+        status.textContent = 'No clients returned';
+        notice.style.display = 'block';
+        notice.textContent = 'The local Network API is connected, but no client records were returned in the latest snapshot.';
+      } else {
+        status.textContent = `${filtered.length} of ${clients.length} clients shown`;
+        notice.style.display = 'none';
+      }
+
+      const named = clients.filter(client => !isUnnamedClient(client)).length;
+      const unnamed = Math.max(clients.length - named, 0);
+      const wireless = clients.filter(client => clientType(client) === 'wireless').length;
+      const wired = clients.filter(client => clientType(client) === 'wired').length;
+      const vpn = clients.filter(client => clientType(client) === 'vpn').length;
+      grid.innerHTML = `
+        ${renderInsightCard('Inventory coverage', [
+          ['Total clients', clients.length],
+          ['Named clients', named],
+          ['Need naming', unnamed],
+        ])}
+        ${renderInsightCard('Access mix', [
+          ['Wireless', wireless],
+          ['Wired', wired],
+          ['VPN', vpn],
+        ])}
+        ${renderInsightCard('Current view', [
+          ['Shown', filtered.length],
+          ['Hidden by filters', Math.max(clients.length - filtered.length, 0)],
+          ['Updated', formatDate(snapshot.checked_at)],
+        ])}
+      `;
+
+      for (const client of filtered) {
+        const row = document.createElement('tr');
+        const unnamedClient = isUnnamedClient(client);
+        row.innerHTML = `
+          <td>
+            <div class="client-name ${unnamedClient ? 'client-unknown' : ''}">${escapeHtml(clientName(client))}</div>
+            <div class="client-meta">${escapeHtml(client.id || client.type || '-')}</div>
+          </td>
+          <td>${escapeHtml(client.ipAddress || client.ip || '-')}</td>
+          <td>${escapeHtml(client.macAddress || client.mac || '-')}</td>
+          <td><span class="pill ${unnamedClient ? 'warn' : 'ok'}">${escapeHtml(clientType(client))}</span></td>
+          <td>${formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')}</td>
+        `;
+        body.appendChild(row);
+      }
+      if (!filtered.length) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="5" class="subtle">No clients match the current filters.</td>';
+        body.appendChild(row);
+      }
+    }
+
+    function filteredClients(clients) {
+      const query = $('clientSearch').value.trim().toLowerCase();
+      const type = $('clientTypeFilter').value;
+      const identity = $('clientIdentityFilter').value;
+      return clients.filter(client => {
+        if (type !== 'all' && clientType(client) !== type) return false;
+        if (identity === 'named' && isUnnamedClient(client)) return false;
+        if (identity === 'unnamed' && !isUnnamedClient(client)) return false;
+        if (!query) return true;
+        return [
+          clientName(client),
+          client.ipAddress,
+          client.ip,
+          client.macAddress,
+          client.mac,
+          client.type,
+          client.network,
+          client.id,
+        ].some(value => String(value || '').toLowerCase().includes(query));
+      });
+    }
+
+    function clientName(client) {
+      return client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
+    }
+
+    function isUnnamedClient(client) {
+      const name = String(client.name || client.hostname || client.displayName || '').trim();
+      return !name || /^unknown/i.test(name) || name === String(client.macAddress || client.mac || '').trim();
+    }
+
+    function clientType(client) {
+      const raw = `${client.type || ''} ${client.network || ''} ${client.access?.type || ''}`.toLowerCase();
+      if (raw.includes('vpn')) return 'vpn';
+      if (raw.includes('wireless') || raw.includes('wifi') || raw.includes('wi-fi')) return 'wireless';
+      if (raw.includes('wired') || raw.includes('ethernet')) return 'wired';
+      return 'unknown';
+    }
+
     function renderDiscovery() {
       const snapshot = state.discovery || {};
       const notice = $('discoveryNotice');
@@ -995,6 +1171,9 @@
 
     $('kindFilter').addEventListener('change', renderTable);
     $('statusFilter').addEventListener('change', renderTable);
+    $('clientSearch').addEventListener('input', renderClients);
+    $('clientTypeFilter').addEventListener('change', renderClients);
+    $('clientIdentityFilter').addEventListener('change', renderClients);
     window.addEventListener('hashchange', renderPage);
     $('runChecks').addEventListener('click', async () => {
       $('runChecks').disabled = true;
