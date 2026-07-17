@@ -452,6 +452,75 @@
       <section class="card unifi-panel">
         <div id="unifiNotice" class="notice">Enable the UniFi API collector in .env to populate this section.</div>
         <div id="unifiGrid" class="unifi-grid"></div>
+        <div id="unifiUtilization" class="utilization-grid"></div>
+      </section>
+    </section>
+
+    <section id="page-clients" class="page" data-page="clients">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Client inventory</div>
+          <h2>Connected clients</h2>
+          <p class="subtle">Search and filter the phones, laptops, IoT devices, and VPN clients reported by the UniFi Network API.</p>
+        </div>
+        <span id="clientStatus" class="subtle">Waiting for client data...</span>
+      </div>
+      <section class="card unifi-panel">
+        <div id="clientNotice" class="notice">Enable the local UniFi Network API collector to populate this section.</div>
+        <div id="clientGrid" class="unifi-grid"></div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <div>
+            <h2>Trusted vs untrusted</h2>
+            <p class="subtle">Known devices from <code>TRUSTED_CLIENTS</code> on the left; anything not matched is on the right for review.</p>
+          </div>
+        </div>
+        <div class="trust-grid">
+          <div class="trust-column">
+            <h3>Trusted / watched <span id="trustedClientCount" class="pill ok">0</span></h3>
+            <div id="trustedClientList" class="trust-list subtle">No trusted clients matched yet.</div>
+          </div>
+          <div class="trust-column">
+            <h3>Unknown / untrusted <span id="untrustedClientCount" class="pill warn">0</span></h3>
+            <div id="untrustedClientList" class="trust-list subtle">No untrusted clients returned yet.</div>
+          </div>
+        </div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <h2>Client list</h2>
+          <div class="client-filters">
+            <input id="clientSearch" type="search" aria-label="Search clients" placeholder="Search name, IP, MAC, network...">
+            <select id="clientTypeFilter" aria-label="Client type filter">
+              <option value="all">All types</option>
+              <option value="wired">Wired</option>
+              <option value="wireless">Wireless</option>
+              <option value="vpn">VPN</option>
+              <option value="unknown">Unknown</option>
+            </select>
+            <select id="clientIdentityFilter" aria-label="Client identity filter">
+              <option value="all">All clients</option>
+              <option value="trusted">Trusted / watched</option>
+              <option value="untrusted">Unknown / untrusted</option>
+              <option value="named">Named only</option>
+              <option value="unnamed">Needs naming</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>IP</th>
+              <th>MAC</th>
+              <th>Access</th>
+              <th>Traffic</th>
+              <th>Connected</th>
+            </tr>
+          </thead>
+          <tbody id="clientBody"></tbody>
+        </table>
       </section>
     </section>
 
@@ -754,8 +823,10 @@
       const snapshot = state.unifi || {};
       const notice = $('unifiNotice');
       const grid = $('unifiGrid');
+      const utilization = $('unifiUtilization');
       const status = $('unifiStatus');
       grid.innerHTML = '';
+      utilization.innerHTML = '';
 
       if (!snapshot.api_enabled) {
         status.textContent = 'Collector disabled';
@@ -790,6 +861,9 @@
       const siteManagerDevices = snapshot.site_manager_devices || [];
       const siteManagerIspMetrics = snapshot.site_manager_isp_metrics || [];
       const siteManagerErrors = snapshot.site_manager_errors || {};
+      const insights = snapshot.traffic_insights || {};
+      const topDevices = insights.top_devices || [];
+      const topClients = insights.top_clients || [];
       const activeSites = siteManagerSites.filter(site => String(site.permission || '').length || site.isOwner).length;
       const onlineDevices = siteManagerDevices.filter(isOnlineDevice).length;
       grid.innerHTML = `
@@ -804,6 +878,12 @@
           ['Local site', snapshot.site_id || '-'],
           ['Local devices', devices.length],
           ['Connected clients', clients.length],
+        ])}
+        ${renderInsightCard('Network utilization', [
+          ['Device throughput', formatRate(insights.total_device_rate_bps || 0)],
+          ['Client traffic total', formatBytes(insights.total_client_bytes || 0)],
+          ['Active clients', insights.active_client_count || 0],
+          ['High CPU / memory', insights.stressed_device_count || 0],
         ])}
         ${renderInsightCard('Account health', [
           ['Accessible sites', activeSites],
@@ -845,6 +925,15 @@
           </div>
         </div>
         <div class="insight-card">
+          <h3>Traffic totals</h3>
+          <div class="insight-list">
+            <div class="insight-item"><span class="subtle">Client download</span><span class="insight-value">${formatBytes(insights.total_client_rx_bytes || 0)}</span></div>
+            <div class="insight-item"><span class="subtle">Client upload</span><span class="insight-value">${formatBytes(insights.total_client_tx_bytes || 0)}</span></div>
+            <div class="insight-item"><span class="subtle">Device RX rate</span><span class="insight-value">${formatRate(insights.total_device_rx_rate_bps || 0)}</span></div>
+            <div class="insight-item"><span class="subtle">Device TX rate</span><span class="insight-value">${formatRate(insights.total_device_tx_rate_bps || 0)}</span></div>
+          </div>
+        </div>
+        <div class="insight-card">
           <h3>Collector details</h3>
           <div class="insight-list">
             <div class="insight-item"><span class="subtle">Latency</span><span class="insight-value">${snapshot.latency_ms || 0} ms</span></div>
@@ -853,6 +942,228 @@
           </div>
         </div>
       `;
+      utilization.innerHTML = `
+          <div class="utilization-card">
+            <h3>Top devices by live throughput</h3>
+            <div class="utilization-list">${renderDeviceUtilization(topDevices)}</div>
+          </div>
+          <div class="utilization-card">
+            <h3>Top clients by total traffic</h3>
+            <div class="utilization-list">${renderClientUtilization(topClients)}</div>
+          </div>
+      `;
+    }
+
+    function renderClients() {
+      const snapshot = state.unifi || {};
+      const notice = $('clientNotice');
+      const grid = $('clientGrid');
+      const status = $('clientStatus');
+      const body = $('clientBody');
+      const clients = snapshot.clients || [];
+      const filtered = filteredClients(clients);
+      const trustedClients = clients.filter(isTrustedClient);
+      const untrustedClients = clients.filter(client => !isTrustedClient(client));
+      grid.innerHTML = '';
+      body.innerHTML = '';
+      renderTrustSection(trustedClients, untrustedClients);
+
+      if (!snapshot.api_enabled) {
+        status.textContent = 'Collector disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set UNIFI_API_ENABLED=true with a local Network API key to populate connected clients.';
+      } else if (snapshot.network_error) {
+        status.textContent = 'Local Network API unavailable';
+        notice.style.display = 'block';
+        notice.textContent = snapshot.network_error;
+      } else if (!clients.length) {
+        status.textContent = 'No clients returned';
+        notice.style.display = 'block';
+        notice.textContent = 'The local Network API is connected, but no client records were returned in the latest snapshot.';
+      } else {
+        status.textContent = `${filtered.length} of ${clients.length} clients shown`;
+        notice.style.display = 'none';
+      }
+
+      const named = clients.filter(client => !isUnnamedClient(client)).length;
+      const unnamed = Math.max(clients.length - named, 0);
+      const trusted = trustedClients.length;
+      const untrusted = Math.max(clients.length - trusted, 0);
+      const needsReview = clients.filter(client => !isTrustedClient(client) || isUnnamedClient(client)).length;
+      const wireless = clients.filter(client => clientType(client) === 'wireless').length;
+      const wired = clients.filter(client => clientType(client) === 'wired').length;
+      const vpn = clients.filter(client => clientType(client) === 'vpn').length;
+      grid.innerHTML = `
+        ${renderInsightCard('Inventory coverage', [
+          ['Total clients', clients.length],
+          ['Named clients', named],
+          ['Need naming', unnamed],
+        ])}
+        ${renderInsightCard('Trust coverage', [
+          ['Trusted / watched', trusted],
+          ['Unknown / untrusted', untrusted],
+          ['Needs review', needsReview],
+        ])}
+        ${renderInsightCard('Access mix', [
+          ['Wireless', wireless],
+          ['Wired', wired],
+          ['VPN', vpn],
+        ])}
+        ${renderInsightCard('Current view', [
+          ['Shown', filtered.length],
+          ['Hidden by filters', Math.max(clients.length - filtered.length, 0)],
+          ['Updated', formatDate(snapshot.checked_at)],
+        ])}
+      `;
+
+      for (const client of filtered) {
+        const row = document.createElement('tr');
+        const unnamedClient = isUnnamedClient(client);
+        const trustedClient = isTrustedClient(client);
+        const trustedLabel = trustedClient ? client.trustedCategory || 'trusted' : 'untrusted';
+        row.innerHTML = `
+          <td>
+            <div class="client-name ${unnamedClient ? 'client-unknown' : ''}">${escapeHtml(clientName(client))}</div>
+            <div class="client-meta">${escapeHtml(client.trustedName ? `Configured as ${client.trustedName}` : client.id || client.type || '-')}</div>
+          </td>
+          <td>${escapeHtml(client.ipAddress || client.ip || '-')}</td>
+          <td>${escapeHtml(client.macAddress || client.mac || '-')}</td>
+          <td>
+            <span class="pill ${trustedClient ? 'ok' : 'warn'}">${escapeHtml(trustedLabel)}</span>
+            <span class="pill ${unnamedClient ? 'warn' : 'ok'}">${escapeHtml(clientType(client))}</span>
+          </td>
+          <td>${clientTrafficLabel(client)}</td>
+          <td>${formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')}</td>
+        `;
+        body.appendChild(row);
+      }
+      if (!filtered.length) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="6" class="subtle">No clients match the current filters.</td>';
+        body.appendChild(row);
+      }
+    }
+
+    function renderDeviceUtilization(devices) {
+      if (!devices.length) return '<span class="subtle">No device utilization data returned yet.</span>';
+      const maxRate = Math.max(...devices.map(device => Number(device.total_rate_bps || 0)), 1);
+      return devices.slice(0, 8).map(device => {
+        const rate = Number(device.total_rate_bps || 0);
+        const cpu = Number(device.cpu_pct || 0);
+        const memory = Number(device.memory_pct || 0);
+        const stress = cpu >= 80 || memory >= 80;
+        return `
+          <div class="utilization-item">
+            <div class="utilization-title">
+              <strong>${escapeHtml(device.name || 'Unknown device')}</strong>
+              <span class="pill ${stress ? 'warn' : 'ok'}">${formatRate(rate)}</span>
+            </div>
+            <div class="bar"><div class="bar-fill ${stress ? 'warn' : ''}" style="width:${Math.min((rate / maxRate) * 100, 100).toFixed(0)}%"></div></div>
+            <span class="subtle">${escapeHtml(device.model || device.ip || '')} &bull; CPU ${formatPercent(cpu)} &bull; Memory ${formatPercent(memory)} &bull; RX ${formatRate(device.rx_rate_bps || 0)} / TX ${formatRate(device.tx_rate_bps || 0)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderClientUtilization(clients) {
+      if (!clients.length) return '<span class="subtle">No client traffic data returned yet.</span>';
+      const maxBytes = Math.max(...clients.map(client => Number(client.total_bytes || 0)), 1);
+      return clients.slice(0, 8).map(client => `
+        <div class="utilization-item">
+          <div class="utilization-title">
+            <strong>${escapeHtml(client.name || 'Unknown client')}</strong>
+            <span class="pill ok">${formatBytes(client.total_bytes || 0)}</span>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width:${Math.min((Number(client.total_bytes || 0) / maxBytes) * 100, 100).toFixed(0)}%"></div></div>
+          <span class="subtle">${escapeHtml(client.ip || client.mac || '')} &bull; RX ${formatBytes(client.rx_bytes || 0)} / TX ${formatBytes(client.tx_bytes || 0)}${client.total_rate_bps ? ` &bull; ${formatRate(client.total_rate_bps)}` : ''}</span>
+        </div>
+      `).join('');
+    }
+
+    function clientTrafficLabel(client) {
+      const rx = Number(client.rxBytes || client.rx_bytes || client.bytesIn || 0);
+      const tx = Number(client.txBytes || client.tx_bytes || client.bytesOut || 0);
+      const rate = Number(client.rxRateBps || client.txRateBps || client.rx_rate_bps || client.tx_rate_bps || 0);
+      const total = rx + tx;
+      if (!total && !rate) return '<span class="subtle">-</span>';
+      return `<strong>${formatBytes(total)}</strong><br><span class="subtle">RX ${formatBytes(rx)} / TX ${formatBytes(tx)}${rate ? ` &bull; ${formatRate(rate)}` : ''}</span>`;
+    }
+
+    function renderTrustSection(trustedClients, untrustedClients) {
+      $('trustedClientCount').textContent = trustedClients.length;
+      $('untrustedClientCount').textContent = untrustedClients.length;
+      $('trustedClientList').innerHTML = renderTrustList(
+        trustedClients,
+        'No trusted clients matched yet. Add known MAC addresses to TRUSTED_CLIENTS in your local .env.'
+      );
+      $('untrustedClientList').innerHTML = renderTrustList(
+        untrustedClients,
+        'No unknown or untrusted clients returned in the latest snapshot.'
+      );
+    }
+
+    function renderTrustList(clients, emptyText) {
+      if (!clients.length) return `<span class="subtle">${escapeHtml(emptyText)}</span>`;
+      return clients.slice(0, 12).map(client => {
+        const trusted = isTrustedClient(client);
+        const label = trusted ? client.trustedCategory || 'trusted' : 'review';
+        return `
+          <div class="trust-item">
+            <span>
+              <strong>${escapeHtml(clientName(client))}</strong>
+              <span class="subtle">${escapeHtml(client.ipAddress || client.ip || 'No IP')} &bull; ${escapeHtml(client.macAddress || client.mac || 'No MAC')}</span>
+            </span>
+            <span class="pill ${trusted ? 'ok' : 'warn'}">${escapeHtml(label)}</span>
+          </div>
+        `;
+      }).join('') + (clients.length > 12 ? `<span class="subtle">+ ${clients.length - 12} more shown in the full client list.</span>` : '');
+    }
+
+    function filteredClients(clients) {
+      const query = $('clientSearch').value.trim().toLowerCase();
+      const type = $('clientTypeFilter').value;
+      const identity = $('clientIdentityFilter').value;
+      return clients.filter(client => {
+        if (type !== 'all' && clientType(client) !== type) return false;
+        if (identity === 'trusted' && !isTrustedClient(client)) return false;
+        if (identity === 'untrusted' && isTrustedClient(client)) return false;
+        if (identity === 'named' && isUnnamedClient(client)) return false;
+        if (identity === 'unnamed' && !isUnnamedClient(client)) return false;
+        if (!query) return true;
+        return [
+          clientName(client),
+          client.trustedCategory,
+          client.trustedName,
+          client.ipAddress,
+          client.ip,
+          client.macAddress,
+          client.mac,
+          client.type,
+          client.network,
+          client.id,
+        ].some(value => String(value || '').toLowerCase().includes(query));
+      });
+    }
+
+    function clientName(client) {
+      return client.trustedName || client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
+    }
+
+    function isUnnamedClient(client) {
+      const name = String(client.trustedName || client.name || client.hostname || client.displayName || '').trim();
+      return !name || /^unknown/i.test(name) || name === String(client.macAddress || client.mac || '').trim();
+    }
+
+    function isTrustedClient(client) {
+      return client.trusted === true || String(client.trusted || '').toLowerCase() === 'true';
+    }
+
+    function clientType(client) {
+      const raw = `${client.type || ''} ${client.network || ''} ${client.access?.type || ''}`.toLowerCase();
+      if (raw.includes('vpn')) return 'vpn';
+      if (raw.includes('wireless') || raw.includes('wifi') || raw.includes('wi-fi')) return 'wireless';
+      if (raw.includes('wired') || raw.includes('ethernet')) return 'wired';
+      return 'unknown';
     }
 
     function renderClients() {
@@ -1161,6 +1472,11 @@
 
     function formatRate(value) {
       return `${formatBytes(value)}/s`;
+    }
+
+    function formatPercent(value) {
+      const amount = Number(value) || 0;
+      return amount ? `${amount.toFixed(0)}%` : '-';
     }
 
     function escapeHtml(value) {

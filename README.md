@@ -133,7 +133,11 @@ UNIFI_LEGACY_STATS_ENABLED=true
 # Site Manager API. This works with keys from https://unifi.ui.com/settings/api-keys.
 UNIFI_SITE_MANAGER_ENABLED=true
 UNIFI_SITE_MANAGER_BASE_URL=https://api.ui.com
-UNIFI_SITE_MANAGER_API_KEY=replace-with-your-site-manager-api-key
+UNIFI_SITE_MANAGER_API_KEY=
+
+# Optional trusted/watched client labels.
+# Format: mac=name[:category];mac=name[:category]
+TRUSTED_CLIENTS=aa:bb:cc:dd:ee:ff=Work Laptop:trusted;11:22:33:44:55:66=Storage NAS:critical
 ```
 
 Notes:
@@ -146,6 +150,7 @@ Notes:
 - Set `UNIFI_VERIFY_TLS=false` for the default self-signed UDM certificate.
 - `UNIFI_LEGACY_STATS_ENABLED=true` attempts older local stats endpoints for richer traffic counters. If your console rejects those endpoints, the dashboard will still use the official API data it can collect.
 - `UNIFI_SITE_MANAGER_ENABLED=true` calls Site Manager endpoints including `GET /v1/sites`, `GET /v1/hosts`, `GET /v1/devices`, and `GET /v1/isp-metrics`.
+- `TRUSTED_CLIENTS` lets the Clients page label known devices and filter unknown/untrusted clients. Keep real MAC addresses only in local `.env`, especially for a public repo.
 
 UniFi documents local Network API access under UniFi Network > Integrations. The official local Network API includes endpoints for sites, adopted devices, connected clients, and latest device statistics when the local Network API key is available.
 
