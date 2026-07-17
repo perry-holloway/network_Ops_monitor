@@ -276,6 +276,25 @@
       color: #ffe4a3;
       font-weight: 800;
     }
+    .attention-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .attention-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .attention-column { display: grid; gap: 12px; }
+    .attention-item {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.52);
+      padding: 14px;
+      display: grid;
+      gap: 9px;
+      cursor: pointer;
+    }
+    .attention-item:hover { border-color: rgba(67,217,239,.5); background: rgba(67,217,239,.05); }
+    .attention-item.critical { border-color: rgba(255,91,110,.5); background: rgba(255,91,110,.07); }
+    .attention-item.warning { border-color: rgba(247,185,85,.48); background: rgba(247,185,85,.07); }
+    .attention-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .attention-title strong { font-size: 15px; }
+    .attention-meta { color: var(--muted); line-height: 1.45; }
+    .attention-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
     .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -428,7 +447,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -470,6 +489,7 @@
 
   <nav class="top-nav" aria-label="Dashboard pages">
     <a href="#summary" data-page-link="summary">Summary</a>
+    <a href="#attention" data-page-link="attention">Attention Queue</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
     <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
@@ -525,6 +545,14 @@
       <section class="grid quick-links">
         <div class="card nav-card">
           <div>
+            <div class="eyebrow">Action</div>
+            <h3>Attention queue</h3>
+            <p class="subtle">Work the highest-priority devices, clients, inventory gaps, and trend alerts first.</p>
+          </div>
+          <a class="page-link" href="#attention">Open queue</a>
+        </div>
+        <div class="card nav-card">
+          <div>
             <div class="eyebrow">Collection</div>
             <h3>Collection health</h3>
             <p class="subtle">Review each local check, filter failures, and inspect per-target history.</p>
@@ -562,6 +590,50 @@
             <p class="subtle">Find devices visible on configured local subnets, even before UniFi client API access is available.</p>
           </div>
           <a class="page-link" href="#discovery">Open discovery page</a>
+        </div>
+      </section>
+    </section>
+
+    <section id="page-attention" class="page" data-page="attention">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Attention Queue</div>
+          <h2>What needs action next?</h2>
+          <p class="subtle">A prioritized workbench for offline devices, unknown clients, missing metadata, utilization spikes, and follow-up notes.</p>
+        </div>
+        <span id="attentionStatus" class="subtle">Waiting for inventory data...</span>
+      </div>
+      <section class="attention-grid">
+        <div class="card metric"><div class="label">Critical</div><div id="attentionCritical" class="value">-</div></div>
+        <div class="card metric"><div class="label">Warnings</div><div id="attentionWarnings" class="value">-</div></div>
+        <div class="card metric"><div class="label">Review</div><div id="attentionReview" class="value">-</div></div>
+        <div class="card metric"><div class="label">Inventory Gaps</div><div id="attentionInventory" class="value">-</div></div>
+      </section>
+      <section class="attention-layout">
+        <div class="card panel">
+          <div class="toolbar">
+            <div>
+              <h2>Work queue</h2>
+              <p class="subtle">Click a device or client item to open its detail drawer and update local inventory notes.</p>
+            </div>
+            <select id="attentionFilter" aria-label="Attention queue filter">
+              <option value="all">All items</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warnings</option>
+              <option value="review">Review</option>
+              <option value="inventory">Inventory gaps</option>
+            </select>
+          </div>
+          <div id="attentionList" class="attention-column"></div>
+        </div>
+        <div class="card panel">
+          <h2>Queue guide</h2>
+          <div class="detail">
+            <div class="detail-row"><span class="subtle">Critical</span><strong>Down watched targets or offline UniFi infrastructure</strong></div>
+            <div class="detail-row"><span class="subtle">Warning</span><strong>High CPU/memory, traffic spikes, stale clients, or trend alerts</strong></div>
+            <div class="detail-row"><span class="subtle">Review</span><strong>Unknown/untrusted clients and unnamed devices</strong></div>
+            <div class="detail-row"><span class="subtle">Inventory</span><strong>Missing owner, location, category, or notes</strong></div>
+          </div>
         </div>
       </section>
     </section>
@@ -784,7 +856,7 @@
   </div>
 
   <script>
-    const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const pages = ['summary', 'attention', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
     const state = { summary: null, unifi: null, unifiHistory: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
@@ -816,6 +888,7 @@
       renderDiagram();
       renderUnifi();
       renderUnifiHistory();
+      renderAttentionQueue();
       renderClients();
       renderDiscovery();
       renderTable();
@@ -1202,6 +1275,280 @@
           <circle class="dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3.5"></circle>
         </svg>
       `;
+    }
+
+    function renderAttentionQueue() {
+      const items = buildAttentionItems();
+      const filter = $('attentionFilter')?.value || 'all';
+      const filtered = filter === 'all' ? items : items.filter(item => item.category === filter);
+      const critical = items.filter(item => item.category === 'critical').length;
+      const warnings = items.filter(item => item.category === 'warning').length;
+      const review = items.filter(item => item.category === 'review').length;
+      const inventory = items.filter(item => item.category === 'inventory').length;
+      $('attentionCritical').textContent = critical;
+      $('attentionWarnings').textContent = warnings;
+      $('attentionReview').textContent = review;
+      $('attentionInventory').textContent = inventory;
+      $('attentionStatus').textContent = items.length
+        ? `${items.length} items need attention`
+        : 'No attention items in the latest data';
+
+      const list = $('attentionList');
+      const visibleItems = filtered.slice(0, 40);
+      list.innerHTML = filtered.length
+        ? visibleItems.map(renderAttentionItem).join('')
+        : '<div class="empty-diagram">Nothing in this queue right now. That is the good kind of boring.</div>';
+      attachAttentionHandlers(list, visibleItems);
+    }
+
+    function buildAttentionItems() {
+      const summary = state.summary || {};
+      const snapshot = state.unifi || {};
+      const discovery = state.discovery || {};
+      const history = state.unifiHistory || {};
+      const insights = snapshot.traffic_insights || {};
+      const checks = summary.latest || [];
+      const clients = dedupeEntities(snapshot.clients || []);
+      const devices = dedupeEntities([...(snapshot.site_manager_devices || []), ...(snapshot.devices || [])]);
+      const topClients = dedupeEntities(insights.top_clients || []);
+      const topDevices = dedupeEntities(insights.top_devices || []);
+      const items = [];
+
+      checks.filter(check => !check.ok).forEach(check => {
+        items.push(attentionItem({
+          category: check.sensitivity === 'critical' || check.sensitivity === 'high' ? 'critical' : 'warning',
+          title: `${check.name || check.target} is ${check.status || 'down'}`,
+          meta: `${check.kind} check for ${check.target} failed at ${formatDate(check.checked_at)}.`,
+          detail: `Latency ${check.latency_ms || 0} ms`,
+          action: 'check',
+          checkTarget: check.target,
+          checkKind: check.kind,
+        }));
+      });
+
+      devices.filter(device => !isOnlineDevice(device)).forEach(device => {
+        items.push(attentionItem({
+          category: 'critical',
+          title: `${deviceName(device)} is offline`,
+          meta: `${deviceModel(device) || 'UniFi device'} ${device.ipAddress || device.ip || ''}`.trim(),
+          detail: `State: ${deviceStatus(device)}`,
+          action: 'entity',
+          entityKind: 'device',
+          entityId: entityKey(device),
+        }));
+      });
+
+      [...devices, ...topDevices].filter(isStressedDevice).forEach(device => {
+        items.push(attentionItem({
+          category: 'warning',
+          title: `${deviceName(device)} is under load`,
+          meta: `${deviceModel(device) || 'Device'} CPU ${formatPercent(device.cpu_pct || 0)} / Memory ${formatPercent(device.memory_pct || 0)}`,
+          detail: `Throughput ${formatRate(device.total_rate_bps || 0)}`,
+          action: 'entity',
+          entityKind: 'device',
+          entityId: entityKey(device),
+        }));
+      });
+
+      clients.filter(client => !isTrustedClient(client)).forEach(client => {
+        items.push(attentionItem({
+          category: 'review',
+          title: `${clientName(client)} needs trust review`,
+          meta: `${client.ipAddress || client.ip || 'No IP'} / ${client.macAddress || client.mac || 'No MAC'}`,
+          detail: clientType(client),
+          action: 'entity',
+          entityKind: 'client',
+          entityId: entityKey(client),
+        }));
+      });
+
+      clients.filter(isUnnamedClient).forEach(client => {
+        items.push(attentionItem({
+          category: 'review',
+          title: 'Client needs a friendly name',
+          meta: `${client.ipAddress || client.ip || 'No IP'} / ${client.macAddress || client.mac || 'No MAC'}`,
+          detail: `Seen as ${clientName(client)}`,
+          action: 'entity',
+          entityKind: 'client',
+          entityId: entityKey(client),
+        }));
+      });
+
+      clients.filter(isStaleClient).forEach(client => {
+        items.push(attentionItem({
+          category: 'warning',
+          title: `${clientName(client)} has stale activity`,
+          meta: `Last seen ${formatDate(clientLastSeenAt(client))}`,
+          detail: `${client.ipAddress || client.ip || 'No IP'} / ${client.macAddress || client.mac || 'No MAC'}`,
+          action: 'entity',
+          entityKind: 'client',
+          entityId: entityKey(client),
+        }));
+      });
+
+      topClients.filter(client => Number(client.total_bytes || 0) > 0).slice(0, 5).forEach(client => {
+        items.push(attentionItem({
+          category: isTrustedClient(client) ? 'warning' : 'review',
+          title: `${clientName(client)} is a top traffic source`,
+          meta: `${formatBytes(client.total_bytes || 0)} total traffic`,
+          detail: `${client.ip || client.ipAddress || 'No IP'} ${client.mac || client.macAddress || ''}`,
+          action: 'entity',
+          entityKind: 'client',
+          entityId: entityKey(client),
+        }));
+      });
+
+      devices.filter(entityNeedsInventory).slice(0, 20).forEach(device => {
+        items.push(attentionItem({
+          category: 'inventory',
+          title: `${deviceName(device)} is missing inventory metadata`,
+          meta: missingInventoryFields(device).join(', '),
+          detail: `${deviceModel(device) || 'Device'} ${device.ipAddress || device.ip || ''}`.trim(),
+          action: 'entity',
+          entityKind: 'device',
+          entityId: entityKey(device),
+        }));
+      });
+
+      clients.filter(entityNeedsInventory).slice(0, 20).forEach(client => {
+        items.push(attentionItem({
+          category: 'inventory',
+          title: `${clientName(client)} is missing inventory metadata`,
+          meta: missingInventoryFields(client).join(', '),
+          detail: `${client.ipAddress || client.ip || 'No IP'} / ${client.macAddress || client.mac || 'No MAC'}`,
+          action: 'entity',
+          entityKind: 'client',
+          entityId: entityKey(client),
+        }));
+      });
+
+      (history.trends?.alerts || []).forEach(alert => {
+        items.push(attentionItem({
+          category: alert.severity === 'warning' ? 'warning' : 'review',
+          title: alert.message,
+          meta: `Trend alert: ${alert.kind}`,
+          detail: alert.value ? String(alert.value) : 'Latest snapshot window',
+          action: 'none',
+        }));
+      });
+
+      if ((discovery.devices || []).length && !clients.length) {
+        items.push(attentionItem({
+          category: 'review',
+          title: 'LAN discovery found devices but client API has no clients',
+          meta: `${discovery.devices.length} discovered devices are available from subnet scanning.`,
+          detail: 'Check UniFi Network API client access if this is unexpected.',
+          action: 'page',
+          page: 'discovery',
+        }));
+      }
+
+      return dedupeAttentionItems(items)
+        .sort((a, b) => attentionRank(a) - attentionRank(b) || a.title.localeCompare(b.title));
+    }
+
+    function attentionItem(item) {
+      return {
+        id: [
+          item.category,
+          item.action,
+          item.entityKind || item.checkKind || item.page || '',
+          item.entityId || item.checkTarget || item.title,
+          item.title,
+        ].join('|'),
+        ...item,
+      };
+    }
+
+    function renderAttentionItem(item, index) {
+      const pillClass = item.category === 'critical' ? 'down' : item.category === 'warning' ? 'warn' : 'ok';
+      return `
+        <div class="attention-item ${escapeAttr(item.category)}" data-attention-index="${index}">
+          <div class="attention-title">
+            <strong>${escapeHtml(item.title)}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(item.category)}</span>
+          </div>
+          <div class="attention-meta">${escapeHtml(item.meta || '')}</div>
+          <div class="subtle">${escapeHtml(item.detail || '')}</div>
+          <div class="attention-actions"><span class="page-link">${attentionActionLabel(item)}</span></div>
+        </div>
+      `;
+    }
+
+    function attachAttentionHandlers(root, items) {
+      root.querySelectorAll('[data-attention-index]').forEach(node => {
+        node.addEventListener('click', () => {
+          const item = items[Number(node.getAttribute('data-attention-index'))];
+          if (!item) return;
+          if (item.action === 'entity') openEntityDetailFromId(item.entityKind, item.entityId);
+          if (item.action === 'check') {
+            const check = (state.summary?.latest || []).find(entry => entry.target === item.checkTarget && entry.kind === item.checkKind);
+            if (check) selectCheck(check);
+          }
+          if (item.action === 'page') window.location.hash = item.page;
+        });
+      });
+    }
+
+    function attentionActionLabel(item) {
+      if (item.action === 'entity') return 'Open details';
+      if (item.action === 'check') return 'Open check history';
+      if (item.action === 'page') return 'Open page';
+      return 'Review trend';
+    }
+
+    function attentionRank(item) {
+      const rank = { critical: 0, warning: 1, review: 2, inventory: 3 };
+      return rank[item.category] ?? 9;
+    }
+
+    function dedupeAttentionItems(items) {
+      const seen = new Set();
+      return items.filter(item => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+    }
+
+    function dedupeEntities(items) {
+      const seen = new Set();
+      return items.filter(item => {
+        const key = entityKey(item);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function isStressedDevice(device) {
+      return Number(device.cpu_pct || 0) >= 80 || Number(device.memory_pct || 0) >= 80;
+    }
+
+    function clientLastSeenAt(client) {
+      return client.lastSeenAt || client.last_seen || client.connectedAt || client.latestAssociationTime || '';
+    }
+
+    function isStaleClient(client) {
+      const raw = clientLastSeenAt(client);
+      if (!raw) return false;
+      const timestamp = new Date(raw).getTime();
+      if (!timestamp) return false;
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      return Date.now() - timestamp > sevenDays;
+    }
+
+    function missingInventoryFields(entity) {
+      const fields = [];
+      if (!entity.owner) fields.push('owner');
+      if (!entity.location) fields.push('location');
+      if (!entity.category && !entity.trustedCategory) fields.push('category');
+      if (!entity.notes) fields.push('notes');
+      return fields;
+    }
+
+    function entityNeedsInventory(entity) {
+      return missingInventoryFields(entity).length > 0;
     }
 
     function renderClients() {
@@ -1914,6 +2261,7 @@
     $('clientSearch').addEventListener('input', renderClients);
     $('clientTypeFilter').addEventListener('change', renderClients);
     $('clientIdentityFilter').addEventListener('change', renderClients);
+    $('attentionFilter').addEventListener('change', renderAttentionQueue);
     $('trendWindow').addEventListener('change', () => refresh().catch(error => {
       $('lastRefresh').textContent = `Load failed: ${error.message}`;
     }));
