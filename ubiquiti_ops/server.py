@@ -37,6 +37,11 @@ class OpsHandler(SimpleHTTPRequestHandler):
             )
             self._json(snapshot)
             return
+        if parsed.path == "/api/unifi/history":
+            query = parse_qs(parsed.query)
+            limit = _int(query.get("limit", ["120"])[0], 120)
+            self._json(self.store.unifi_history(limit))
+            return
         if parsed.path == "/api/discovery":
             snapshot = self.store.latest_discovery_snapshot()
             snapshot["discovery_enabled"] = self.config.lan_discovery_enabled
@@ -72,8 +77,33 @@ class OpsHandler(SimpleHTTPRequestHandler):
             self.path = "/index.html"
         super().do_GET()
 
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/entities/update":
+            try:
+                payload = self._read_json()
+                override = self.store.update_entity_override(
+                    payload.get("kind", ""),
+                    payload.get("entity_id", ""),
+                    payload,
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
+                self._json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            self._json({"ok": True, "override": override})
+            return
+        self._json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
+
     def log_message(self, format: str, *args) -> None:
         return
+
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length).decode("utf-8") if length else "{}"
+        payload = json.loads(body)
+        if not isinstance(payload, dict):
+            raise ValueError("JSON body must be an object")
+        return payload
 
     def _json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")
