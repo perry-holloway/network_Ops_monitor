@@ -1,0 +1,13 @@
+services:
+  ubiquiti-ops-console:
+    build: .
+    image: ubiquiti-ops-console:local
+    container_name: ubiquiti-ops-console
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data:/data
+

@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ubiquiti Ops Console</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071016;
+      --panel: #0d1a22;
+      --panel-2: #101f29;
+      --line: #223847;
+      --text: #edf7fb;
+      --muted: #94aabb;
+      --cyan: #43d9ef;
+      --green: #2ed47a;
+      --red: #ff5b6e;
+      --amber: #f7b955;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, rgba(67, 217, 239, .12), transparent 32rem), var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 28px clamp(18px, 4vw, 42px) 18px;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-end;
+    }
+    h1 { margin: 0; font-size: clamp(30px, 5vw, 56px); letter-spacing: -0.05em; }
+    .eyebrow { color: var(--cyan); font-weight: 800; letter-spacing: .18em; font-size: 12px; text-transform: uppercase; }
+    .subtle { color: var(--muted); }
+    main { padding: 0 clamp(18px, 4vw, 42px) 42px; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #132734;
+      color: var(--text);
+      font-weight: 800;
+      padding: 11px 14px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--cyan); }
+    .grid { display: grid; gap: 16px; }
+    .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 22px 0; }
+    .card {
+      background: rgba(13, 26, 34, .86);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.22);
+    }
+    .metric { padding: 20px; }
+    .metric .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+    .metric .value { font-size: 34px; font-weight: 900; margin-top: 8px; }
+    .diagram-panel { padding: 18px; margin-bottom: 16px; overflow: hidden; }
+    .diagram-header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 18px; }
+    .diagram-header h2 { margin: 0; font-size: 18px; }
+    .network-map {
+      display: grid;
+      grid-template-columns: minmax(180px, .8fr) 84px minmax(220px, .9fr) 84px minmax(260px, 1.2fr);
+      gap: 0;
+      align-items: center;
+      min-height: 280px;
+    }
+    .diagram-column { display: grid; gap: 12px; align-content: center; }
+    .diagram-column.devices { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .diagram-column-title {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(145deg, rgba(16,31,41,.96), rgba(6,16,22,.96));
+      color: var(--text);
+      padding: 14px;
+      min-height: 86px;
+      display: grid;
+      gap: 8px;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color .15s ease, transform .15s ease, background .15s ease;
+    }
+    .node:hover { transform: translateY(-1px); border-color: rgba(67,217,239,.65); }
+    .node.gateway {
+      min-height: 150px;
+      place-items: center;
+      text-align: center;
+      border-color: rgba(67,217,239,.48);
+      background: radial-gradient(circle at top, rgba(67,217,239,.16), transparent 70%), rgba(13,26,34,.96);
+    }
+    .node-title { font-weight: 950; }
+    .node-meta { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .node-status { justify-self: start; }
+    .node.gateway .node-status { justify-self: center; }
+    .node.down-node { border-color: rgba(255,91,110,.54); box-shadow: inset 0 0 0 1px rgba(255,91,110,.12); }
+    .node.ok-node { border-color: rgba(46,212,122,.34); }
+    .connector {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(67,217,239,.7), transparent);
+      position: relative;
+      margin: 0 14px;
+    }
+    .connector::before,
+    .connector::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--cyan);
+      transform: translateY(-50%);
+      box-shadow: 0 0 16px rgba(67,217,239,.8);
+    }
+    .connector::before { left: 0; }
+    .connector::after { right: 0; }
+    .empty-diagram {
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .sections { grid-template-columns: 1.2fr .8fr; align-items: start; }
+    .panel { padding: 18px; }
+    .panel h2 { margin: 0 0 14px; font-size: 18px; }
+    .toolbar { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; align-items: center; }
+    select, input {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #08141b;
+      color: var(--text);
+      padding: 10px 12px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 13px 10px; border-bottom: 1px solid rgba(34,56,71,.7); vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    tr { cursor: pointer; }
+    tr:hover td { background: rgba(67,217,239,.05); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .ok { color: var(--green); border-color: rgba(46,212,122,.45); background: rgba(46,212,122,.09); }
+    .down { color: var(--red); border-color: rgba(255,91,110,.45); background: rgba(255,91,110,.09); }
+    .warn { color: var(--amber); border-color: rgba(247,185,85,.45); background: rgba(247,185,85,.09); }
+    .detail { display: grid; gap: 12px; }
+    .detail-row { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid rgba(34,56,71,.7); padding-bottom: 10px; }
+    pre {
+      white-space: pre-wrap;
+      overflow: auto;
+      background: #061016;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      color: #c8d8e3;
+    }
+    .history-item {
+      display: grid;
+      grid-template-columns: 96px 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 14px;
+      margin-top: 10px;
+      background: rgba(6,16,22,.55);
+    }
+    @media (max-width: 900px) {
+      .summary, .sections { grid-template-columns: 1fr; }
+      .network-map {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .connector {
+        width: 2px;
+        height: 36px;
+        margin: 0 auto;
+        background: linear-gradient(180deg, transparent, rgba(67,217,239,.7), transparent);
+      }
+      .connector::before,
+      .connector::after {
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+      .connector::before { top: 0; }
+      .connector::after { top: 100%; }
+      header { align-items: flex-start; flex-direction: column; }
+      .history-item { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="eyebrow">Ubiquiti Ops Console</div>
+      <h1>Network health at a glance.</h1>
+      <p class="subtle">Critical device watcher, WAN checks, DNS checks, and recent status history.</p>
+    </div>
+    <div class="actions">
+      <span id="lastRefresh" class="subtle">Loading…</span>
+      <button id="runChecks">Run checks now</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="grid summary">
+      <div class="card metric"><div class="label">Checks</div><div id="totalChecks" class="value">-</div></div>
+      <div class="card metric"><div class="label">Healthy</div><div id="healthyChecks" class="value">-</div></div>
+      <div class="card metric"><div class="label">Down</div><div id="downChecks" class="value">-</div></div>
+      <div class="card metric"><div class="label">Critical Down</div><div id="criticalDown" class="value">-</div></div>
+    </section>
+
+    <section class="card diagram-panel">
+      <div class="diagram-header">
+        <div>
+          <div class="eyebrow">Live topology</div>
+          <h2>Network diagram</h2>
+        </div>
+        <span class="subtle">Click any node to inspect history</span>
+      </div>
+      <div id="networkDiagram" class="network-map"></div>
+    </section>
+
+    <section class="grid sections">
+      <div class="card panel">
+        <div class="toolbar">
+          <h2>Current checks</h2>
+          <div class="actions">
+            <select id="kindFilter" aria-label="Kind filter">
+              <option value="all">All checks</option>
+              <option value="device">Devices</option>
+              <option value="wan">WAN</option>
+              <option value="dns">DNS</option>
+              <option value="http">HTTP</option>
+            </select>
+            <select id="statusFilter" aria-label="Status filter">
+              <option value="all">All statuses</option>
+              <option value="down">Problems only</option>
+              <option value="ok">Healthy only</option>
+            </select>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Kind</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>Checked</th>
+            </tr>
+          </thead>
+          <tbody id="checksBody"></tbody>
+        </table>
+      </div>
+
+      <aside class="card panel">
+        <h2>Selected check</h2>
+        <div id="detail" class="detail subtle">Click a check to view details and history.</div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const state = { summary: null, selected: null, timer: null };
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path) {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    async function refresh() {
+      state.summary = await api('/api/summary');
+      renderSummary();
+      renderDiagram();
+      renderTable();
+      $('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+
+    function renderSummary() {
+      const totals = state.summary.totals;
+      $('totalChecks').textContent = totals.checks;
+      $('healthyChecks').textContent = totals.ok;
+      $('downChecks').textContent = totals.down;
+      $('criticalDown').textContent = totals.critical_down;
+      $('criticalDown').style.color = totals.critical_down ? 'var(--red)' : 'var(--green)';
+    }
+
+    function filteredChecks() {
+      const kind = $('kindFilter').value;
+      const status = $('statusFilter').value;
+      return state.summary.latest.filter(item => {
+        if (kind !== 'all' && item.kind !== kind) return false;
+        if (status === 'down' && item.ok) return false;
+        if (status === 'ok' && !item.ok) return false;
+        return true;
+      });
+    }
+
+    function renderTable() {
+      const body = $('checksBody');
+      body.innerHTML = '';
+      for (const item of filteredChecks()) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><strong>${escapeHtml(item.name)}</strong><br><span class="subtle">${escapeHtml(item.target)}</span></td>
+          <td>${escapeHtml(item.kind)}</td>
+          <td><span class="pill ${item.ok ? 'ok' : 'down'}">${escapeHtml(item.status)}</span></td>
+          <td>${item.latency_ms} ms</td>
+          <td>${formatDate(item.checked_at)}</td>
+        `;
+        row.addEventListener('click', () => selectCheck(item));
+        body.appendChild(row);
+      }
+    }
+
+    function renderDiagram() {
+      const diagram = $('networkDiagram');
+      const checks = state.summary.latest || [];
+      if (!checks.length) {
+        diagram.className = 'empty-diagram';
+        diagram.textContent = 'No checks have been recorded yet. Run checks once the container is started.';
+        return;
+      }
+      diagram.className = 'network-map';
+
+      const wanChecks = checks.filter(item => item.kind === 'wan' || item.kind === 'dns' || item.kind === 'http');
+      const deviceChecks = checks.filter(item => item.kind === 'device');
+      const gateway = findGateway(deviceChecks);
+      const downstreamDevices = deviceChecks.filter(item => item !== gateway);
+
+      diagram.innerHTML = `
+        <div class="diagram-column">
+          <div class="diagram-column-title">Internet / WAN</div>
+          ${wanChecks.length ? wanChecks.map(renderNode).join('') : '<div class="node"><div class="node-title">No WAN checks</div><div class="node-meta">Add WAN_TARGETS, DNS_LOOKUPS, or HTTP_CHECKS.</div></div>'}
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="diagram-column">
+          <div class="diagram-column-title">Gateway</div>
+          ${gateway ? renderNode(gateway, 'gateway') : renderGatewayPlaceholder(deviceChecks)}
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="diagram-column devices">
+          <div class="diagram-column-title">Watched devices</div>
+          ${downstreamDevices.length ? downstreamDevices.map(renderNode).join('') : '<div class="node"><div class="node-title">No downstream devices</div><div class="node-meta">Add more WATCHED_DEVICES entries in .env.</div></div>'}
+        </div>
+      `;
+
+      diagram.querySelectorAll('[data-target]').forEach(node => {
+        node.addEventListener('click', () => {
+          const target = node.getAttribute('data-target');
+          const kind = node.getAttribute('data-kind');
+          const item = checks.find(check => check.target === target && check.kind === kind);
+          if (item) selectCheck(item);
+        });
+      });
+    }
+
+    function findGateway(devices) {
+      return devices.find(item => /udm|gateway|dream machine|router/i.test(`${item.name} ${item.target}`))
+        || devices.find(item => item.target.endsWith('.1'))
+        || devices[0];
+    }
+
+    function renderNode(item, extraClass = '') {
+      const statusClass = item.ok ? 'ok-node' : 'down-node';
+      const pillClass = item.ok ? 'ok' : 'down';
+      return `
+        <button class="node ${statusClass} ${extraClass}" data-target="${escapeHtml(item.target)}" data-kind="${escapeHtml(item.kind)}" type="button">
+          <span class="node-title">${escapeHtml(item.name)}</span>
+          <span class="node-meta">${escapeHtml(item.kind.toUpperCase())} - ${escapeHtml(item.target)}<br>${item.latency_ms} ms - ${formatDate(item.checked_at)}</span>
+          <span class="pill node-status ${pillClass}">${escapeHtml(item.status)}</span>
+        </button>
+      `;
+    }
+
+    function renderGatewayPlaceholder(devices) {
+      const inferredOnline = devices.some(item => item.ok);
+      const status = inferredOnline ? 'Inferred online' : 'No gateway check';
+      const pillClass = inferredOnline ? 'warn' : 'down';
+      return `
+        <div class="node gateway">
+          <span class="node-title">UDM Gateway</span>
+          <span class="node-meta">Add your UDM IP to WATCHED_DEVICES for live gateway status.</span>
+          <span class="pill node-status ${pillClass}">${status}</span>
+        </div>
+      `;
+    }
+
+    async function selectCheck(item) {
+      state.selected = item;
+      const history = await api(`/api/history?target=${encodeURIComponent(item.target)}&limit=25`);
+      renderDetail(item, history.history);
+    }
+
+    function renderDetail(item, history) {
+      $('detail').classList.remove('subtle');
+      $('detail').innerHTML = `
+        <div class="detail-row"><span class="subtle">Name</span><strong>${escapeHtml(item.name)}</strong></div>
+        <div class="detail-row"><span class="subtle">Target</span><strong>${escapeHtml(item.target)}</strong></div>
+        <div class="detail-row"><span class="subtle">Sensitivity</span><strong>${escapeHtml(item.sensitivity)}</strong></div>
+        <div class="detail-row"><span class="subtle">Status</span><span class="pill ${item.ok ? 'ok' : 'down'}">${escapeHtml(item.status)}</span></div>
+        <div class="detail-row"><span class="subtle">Last checked</span><strong>${formatDate(item.checked_at)}</strong></div>
+        <div>
+          <div class="eyebrow">Details</div>
+          <pre>${escapeHtml(JSON.stringify(item.details, null, 2))}</pre>
+        </div>
+        <div>
+          <div class="eyebrow">Recent history</div>
+          ${history.map(entry => `
+            <div class="history-item">
+              <span class="subtle">${formatDate(entry.checked_at)}</span>
+              <strong>${escapeHtml(entry.status)}</strong>
+              <span class="pill ${entry.ok ? 'ok' : 'down'}">${entry.latency_ms} ms</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function formatDate(value) {
+      if (!value) return '-';
+      return new Date(value).toLocaleString();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[char]));
+    }
+
+    $('kindFilter').addEventListener('change', renderTable);
+    $('statusFilter').addEventListener('change', renderTable);
+    $('runChecks').addEventListener('click', async () => {
+      $('runChecks').disabled = true;
+      $('runChecks').textContent = 'Checking…';
+      try {
+        await api('/api/run-checks');
+        await refresh();
+      } finally {
+        $('runChecks').disabled = false;
+        $('runChecks').textContent = 'Run checks now';
+      }
+    });
+
+    refresh().catch(error => {
+      $('lastRefresh').textContent = `Load failed: ${error.message}`;
+    });
+    state.timer = setInterval(() => refresh().catch(() => {}), 15000);
+  </script>
+</body>
+</html>
