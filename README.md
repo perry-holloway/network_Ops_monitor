@@ -12,6 +12,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Test DNS lookups and external HTTP endpoints
 - Pull Site Manager inventory, hosts, sites, and ISP metric data with the API key that works today
 - Optionally pull connected clients and traffic counters from a local UniFi Network Integration API key
+- Search and filter connected clients in a dedicated client inventory page
 - Discover reachable local devices by scanning configured LAN subnets
 - Run a manual WAN speed test from the dashboard and keep the latest result
 - Persist check history in SQLite
@@ -141,7 +142,7 @@ Notes:
 - A Site Manager key is not the same as a local Network Integration API key. If the local Network API returns `401 Unauthorized`, keep Site Manager enabled and leave `UNIFI_API_KEY` blank until you find/create the local Network key.
 - Site Manager currently populates sites, hosts, infrastructure devices, and ISP metric records.
 - The local Network API populates connected clients, local device statistics, and traffic counters when available.
-- Set `UNIFI_SITE_ID` to the Site Manager site ID for your UDM. You can discover it from `GET https://api.ui.com/v1/sites`.
+- Set `UNIFI_SITE_ID` to the local Network API site ID returned by `GET /proxy/network/integration/v1/sites`. The local site ID may differ from the Site Manager site ID.
 - Set `UNIFI_VERIFY_TLS=false` for the default self-signed UDM certificate.
 - `UNIFI_LEGACY_STATS_ENABLED=true` attempts older local stats endpoints for richer traffic counters. If your console rejects those endpoints, the dashboard will still use the official API data it can collect.
 - `UNIFI_SITE_MANAGER_ENABLED=true` calls Site Manager endpoints including `GET /v1/sites`, `GET /v1/hosts`, `GET /v1/devices`, and `GET /v1/isp-metrics`.
@@ -201,7 +202,7 @@ python -m ubiquiti_ops
 ## Suggested next enhancements
 
 - Email/webhook notifications when critical devices go offline
-- UniFi local API collector for client/AP metadata
 - Daily summary of new, missing, and unstable devices
+- Watched or trusted client labels
 - Maintenance window support
 - Exportable CSV reports
