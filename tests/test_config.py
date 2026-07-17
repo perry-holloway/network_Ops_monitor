@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from ubiquiti_ops.config import Config, parse_named_targets, parse_ports, parse_watched_devices
+from ubiquiti_ops.config import Config, parse_csv, parse_named_targets, parse_ports, parse_watched_devices
 
 
 class ConfigTests(unittest.TestCase):
@@ -22,6 +22,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(targets[0].name, "Cloudflare DNS")
         self.assertEqual(targets[1].name, "8.8.8.8")
 
+    def test_parse_csv_accepts_commas_and_semicolons(self):
+        self.assertEqual(parse_csv("192.168.1.0/24, 192.168.2.0/24;10.0.0.0/30"), (
+            "192.168.1.0/24",
+            "192.168.2.0/24",
+            "10.0.0.0/30",
+        ))
+
     def test_unifi_api_config_from_env(self):
         with patch.dict("os.environ", {
             "UNIFI_API_ENABLED": "true",
@@ -34,6 +41,19 @@ class ConfigTests(unittest.TestCase):
             "UNIFI_SITE_MANAGER_ENABLED": "true",
             "UNIFI_SITE_MANAGER_BASE_URL": "https://api.ui.com/",
             "UNIFI_SITE_MANAGER_API_KEY": "site-manager-key",
+            "LAN_DISCOVERY_ENABLED": "true",
+            "LAN_DISCOVERY_SUBNETS": "192.168.1.0/24;192.168.2.0/24",
+            "LAN_DISCOVERY_PORTS": "80,443",
+            "LAN_DISCOVERY_MAX_HOSTS": "128",
+            "SPEED_TEST_ENABLED": "true",
+            "SPEED_TEST_DOWNLOAD_URL": "https://example.test/down",
+            "SPEED_TEST_UPLOAD_URL": "https://example.test/up",
+            "SPEED_TEST_UPLOAD_ENABLED": "true",
+            "SPEED_TEST_DOWNLOAD_BYTES": "5000000",
+            "SPEED_TEST_UPLOAD_BYTES": "500000",
+            "SPEED_TEST_TIMEOUT_SECONDS": "15",
+            "SPEED_TEST_MIN_DOWNLOAD_MBPS": "50.5",
+            "SPEED_TEST_MIN_UPLOAD_MBPS": "8.5",
         }):
             config = Config.from_env()
         self.assertTrue(config.unifi_api_enabled)
@@ -46,6 +66,19 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.unifi_site_manager_enabled)
         self.assertEqual(config.unifi_site_manager_base_url, "https://api.ui.com")
         self.assertEqual(config.unifi_site_manager_api_key, "site-manager-key")
+        self.assertTrue(config.lan_discovery_enabled)
+        self.assertEqual(config.lan_discovery_subnets, ("192.168.1.0/24", "192.168.2.0/24"))
+        self.assertEqual(config.lan_discovery_ports, (80, 443))
+        self.assertEqual(config.lan_discovery_max_hosts, 128)
+        self.assertTrue(config.speed_test_enabled)
+        self.assertEqual(config.speed_test_download_url, "https://example.test/down")
+        self.assertEqual(config.speed_test_upload_url, "https://example.test/up")
+        self.assertTrue(config.speed_test_upload_enabled)
+        self.assertEqual(config.speed_test_download_bytes, 5000000)
+        self.assertEqual(config.speed_test_upload_bytes, 500000)
+        self.assertEqual(config.speed_test_timeout_seconds, 15)
+        self.assertEqual(config.speed_test_min_download_mbps, 50.5)
+        self.assertEqual(config.speed_test_min_upload_mbps, 8.5)
 
 
 if __name__ == "__main__":

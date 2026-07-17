@@ -11,5 +11,7 @@ services:
       APP_PORT: 8090
     ports:
       - "8090:8090"
+    cap_add:
+      - NET_RAW
     volumes:
       - ./data:/data

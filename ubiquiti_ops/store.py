@@ -66,6 +66,36 @@ class Store:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_unifi_snapshots_time ON unifi_snapshots(checked_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS discovery_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    checked_at TEXT NOT NULL,
+                    ok INTEGER NOT NULL,
+                    scanned_hosts INTEGER NOT NULL,
+                    device_count INTEGER NOT NULL,
+                    latency_ms INTEGER NOT NULL,
+                    error TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_discovery_snapshots_time ON discovery_snapshots(checked_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS speed_test_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    checked_at TEXT NOT NULL,
+                    ok INTEGER NOT NULL,
+                    download_mbps REAL NOT NULL,
+                    upload_mbps REAL,
+                    latency_ms INTEGER NOT NULL,
+                    error TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_speed_test_snapshots_time ON speed_test_snapshots(checked_at DESC)")
 
     def add_result(self, result: dict) -> None:
         with self._lock, self._connection() as conn:
@@ -184,6 +214,108 @@ class Store:
                     "top_devices": [],
                 },
                 "error": "No UniFi API snapshot has been collected yet.",
+            }
+        try:
+            payload = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            payload = {}
+        payload["configured"] = True
+        return payload
+
+    def add_discovery_snapshot(self, snapshot: dict) -> None:
+        payload = dict(snapshot)
+        payload["device_count"] = len(payload.get("devices", [])) or int(payload.get("device_count") or 0)
+        with self._lock, self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO discovery_snapshots
+                    (checked_at, ok, scanned_hosts, device_count, latency_ms, error, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.get("checked_at", ""),
+                    1 if snapshot.get("ok") else 0,
+                    int(snapshot.get("scanned_hosts") or 0),
+                    payload["device_count"],
+                    int(snapshot.get("latency_ms") or 0),
+                    snapshot.get("error", ""),
+                    json.dumps(payload, sort_keys=True),
+                ),
+            )
+
+    def latest_discovery_snapshot(self) -> dict:
+        with self._lock, self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM discovery_snapshots
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return {
+                "configured": False,
+                "ok": False,
+                "checked_at": "",
+                "subnets": [],
+                "ports": [],
+                "scanned_hosts": 0,
+                "device_count": 0,
+                "devices": [],
+                "errors": [],
+                "error": "No LAN discovery snapshot has been collected yet.",
+            }
+        try:
+            payload = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            payload = {}
+        payload["configured"] = True
+        return payload
+
+    def add_speed_test_snapshot(self, snapshot: dict) -> None:
+        with self._lock, self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO speed_test_snapshots
+                    (checked_at, ok, download_mbps, upload_mbps, latency_ms, error, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.get("checked_at", ""),
+                    1 if snapshot.get("ok") else 0,
+                    float(snapshot.get("download_mbps") or 0),
+                    snapshot.get("upload_mbps"),
+                    int(snapshot.get("latency_ms") or 0),
+                    snapshot.get("error", ""),
+                    json.dumps(snapshot, sort_keys=True),
+                ),
+            )
+
+    def latest_speed_test_snapshot(self) -> dict:
+        with self._lock, self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM speed_test_snapshots
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return {
+                "configured": False,
+                "ok": False,
+                "checked_at": "",
+                "download_mbps": 0.0,
+                "upload_mbps": None,
+                "latency_ms": 0,
+                "download_bytes": 0,
+                "upload_bytes": 0,
+                "duration_ms": 0,
+                "upload_enabled": False,
+                "thresholds": {},
+                "error": "No speed test has been run yet.",
             }
         try:
             payload = json.loads(row["payload"])

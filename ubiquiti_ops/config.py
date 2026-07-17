@@ -39,6 +39,19 @@ class Config:
     unifi_site_manager_enabled: bool
     unifi_site_manager_base_url: str
     unifi_site_manager_api_key: str
+    lan_discovery_enabled: bool
+    lan_discovery_subnets: tuple[str, ...]
+    lan_discovery_ports: tuple[int, ...]
+    lan_discovery_max_hosts: int
+    speed_test_enabled: bool
+    speed_test_download_url: str
+    speed_test_upload_url: str
+    speed_test_upload_enabled: bool
+    speed_test_download_bytes: int
+    speed_test_upload_bytes: int
+    speed_test_timeout_seconds: int
+    speed_test_min_download_mbps: float
+    speed_test_min_upload_mbps: float
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -62,6 +75,22 @@ class Config:
             unifi_site_manager_enabled=_bool("UNIFI_SITE_MANAGER_ENABLED", False),
             unifi_site_manager_base_url=os.getenv("UNIFI_SITE_MANAGER_BASE_URL", "https://api.ui.com").rstrip("/"),
             unifi_site_manager_api_key=os.getenv("UNIFI_SITE_MANAGER_API_KEY", "").strip(),
+            lan_discovery_enabled=_bool("LAN_DISCOVERY_ENABLED", False),
+            lan_discovery_subnets=parse_csv(os.getenv("LAN_DISCOVERY_SUBNETS", "192.168.1.0/24")),
+            lan_discovery_ports=parse_ports(os.getenv("LAN_DISCOVERY_PORTS", "22,53,80,443,445,8080,8443")),
+            lan_discovery_max_hosts=max(1, _int("LAN_DISCOVERY_MAX_HOSTS", 256)),
+            speed_test_enabled=_bool("SPEED_TEST_ENABLED", True),
+            speed_test_download_url=os.getenv(
+                "SPEED_TEST_DOWNLOAD_URL",
+                "https://speed.cloudflare.com/__down?bytes=10000000",
+            ).strip(),
+            speed_test_upload_url=os.getenv("SPEED_TEST_UPLOAD_URL", "https://speed.cloudflare.com/__up").strip(),
+            speed_test_upload_enabled=_bool("SPEED_TEST_UPLOAD_ENABLED", False),
+            speed_test_download_bytes=max(100_000, _int("SPEED_TEST_DOWNLOAD_BYTES", 10_000_000)),
+            speed_test_upload_bytes=max(100_000, _int("SPEED_TEST_UPLOAD_BYTES", 1_000_000)),
+            speed_test_timeout_seconds=max(5, _int("SPEED_TEST_TIMEOUT_SECONDS", 20)),
+            speed_test_min_download_mbps=max(0.0, _float("SPEED_TEST_MIN_DOWNLOAD_MBPS", 100.0)),
+            speed_test_min_upload_mbps=max(0.0, _float("SPEED_TEST_MIN_UPLOAD_MBPS", 10.0)),
         )
 
 
@@ -94,6 +123,10 @@ def parse_named_targets(raw: str) -> tuple[NamedTarget, ...]:
     return tuple(targets)
 
 
+def parse_csv(raw: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in raw.replace(";", ",").split(",") if item.strip())
+
+
 def parse_ports(raw: str) -> tuple[int, ...]:
     ports: list[int] = []
     for item in raw.split(","):
@@ -112,6 +145,13 @@ def parse_ports(raw: str) -> tuple[int, ...]:
 def _int(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
     except ValueError:
         return default
 

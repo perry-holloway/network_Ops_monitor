@@ -12,6 +12,8 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Test DNS lookups and external HTTP endpoints
 - Pull Site Manager inventory, hosts, sites, and ISP metric data with the API key that works today
 - Optionally pull connected clients and traffic counters from a local UniFi Network Integration API key
+- Discover reachable local devices by scanning configured LAN subnets
+- Run a manual WAN speed test from the dashboard and keep the latest result
 - Persist check history in SQLite
 - Provide a local dashboard and JSON API
 - Run beside the existing threat monitor on port `8090`
@@ -65,6 +67,47 @@ WAN_TARGETS=1.1.1.1=Cloudflare DNS;8.8.8.8=Google DNS
 DNS_LOOKUPS=ui.com;github.com
 HTTP_CHECKS=https://ui.com=UniFi Website;https://github.com=GitHub
 ```
+
+### LAN discovery
+
+LAN discovery is optional and disabled by default. It helps find phones, laptops, IoT devices, printers, and other local clients even when the UniFi client API is unavailable.
+
+```env
+LAN_DISCOVERY_ENABLED=true
+LAN_DISCOVERY_SUBNETS=192.168.1.0/24
+LAN_DISCOVERY_PORTS=22,53,80,443,445,8080,8443
+LAN_DISCOVERY_MAX_HOSTS=256
+```
+
+Notes:
+
+- Keep the subnet scoped to networks you own and manage.
+- Discovery uses ping plus quick TCP probes against the configured ports.
+- MAC addresses are shown when the container can read them from the local neighbor table.
+- Increase `LAN_DISCOVERY_MAX_HOSTS` only if you intentionally want to scan larger ranges.
+
+### WAN speed test
+
+The dashboard includes a manual speed test on the main page. It is intentionally not part of the normal health-check interval so the console does not consume bandwidth unless you click `Run speed test`.
+
+```env
+SPEED_TEST_ENABLED=true
+SPEED_TEST_DOWNLOAD_URL=https://speed.cloudflare.com/__down?bytes=10000000
+SPEED_TEST_UPLOAD_ENABLED=false
+SPEED_TEST_UPLOAD_URL=https://speed.cloudflare.com/__up
+SPEED_TEST_DOWNLOAD_BYTES=10000000
+SPEED_TEST_UPLOAD_BYTES=1000000
+SPEED_TEST_TIMEOUT_SECONDS=20
+SPEED_TEST_MIN_DOWNLOAD_MBPS=100
+SPEED_TEST_MIN_UPLOAD_MBPS=10
+```
+
+Notes:
+
+- Download testing is enabled by default and uses a public Cloudflare speed-test endpoint.
+- Upload testing is disabled by default. Set `SPEED_TEST_UPLOAD_ENABLED=true` if you want upload measurements too.
+- The result is stored in SQLite and shown on the summary page until the next manual run.
+- Adjust the minimum Mbps values to match your internet plan so the result card can flag slow runs.
 
 ### UniFi API collectors
 
@@ -142,6 +185,9 @@ Invoke-RestMethod `
 GET /api/summary
 GET /api/history?target=192.168.1.1&limit=50
 GET /api/unifi
+GET /api/discovery
+GET /api/speed-test
+GET /api/speed-test/run
 GET /health
 ```
 

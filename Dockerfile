@@ -4,7 +4,7 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
-RUN apk add --no-cache iputils ca-certificates && \
+RUN apk add --no-cache iputils iproute2 ca-certificates && \
     addgroup -S ops && \
     adduser -S ops -G ops && \
     mkdir -p /data && \
