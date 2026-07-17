@@ -7,6 +7,7 @@ import logging
 import ssl
 import time
 from typing import Any
+from urllib.error import HTTPError
 from urllib import parse, request
 
 from .config import Config
@@ -69,8 +70,15 @@ class UniFiApiClient:
 
         if self.config.api_key:
             try:
-                sites = self.list_sites()
-                site_id = site_id or infer_site_id(sites)
+                if site_id:
+                    try:
+                        sites = self.list_sites()
+                        site_id = resolve_local_site_id(site_id, sites)
+                    except Exception as exc:  # noqa: BLE001
+                        LOG.info("UniFi Network API site listing skipped because UNIFI_SITE_ID is configured: %s", exc)
+                else:
+                    sites = self.list_sites()
+                    site_id = infer_site_id(sites)
                 if not site_id:
                     network_error = "No UniFi site was found. Set UNIFI_SITE_ID in .env."
                 else:
@@ -122,10 +130,16 @@ class UniFiApiClient:
         return self._paged("/v1/sites")
 
     def list_devices(self, site_id: str) -> list[dict]:
-        return self._paged(f"/v1/sites/{parse.quote(site_id)}/devices")
+        return self._paged_first_success(
+            f"/v1/sites/{parse.quote(site_id)}/devices",
+            "/v1/devices",
+        )
 
     def list_clients(self, site_id: str) -> list[dict]:
-        return self._paged(f"/v1/sites/{parse.quote(site_id)}/clients")
+        return self._paged_first_success(
+            f"/v1/sites/{parse.quote(site_id)}/clients",
+            "/v1/clients",
+        )
 
     def collect_device_statistics(self, site_id: str, devices: list[dict]) -> list[dict]:
         stats: list[dict] = []
@@ -134,7 +148,10 @@ class UniFiApiClient:
             if not device_id:
                 continue
             try:
-                latest = self._get(f"/v1/sites/{parse.quote(site_id)}/devices/{parse.quote(device_id)}/statistics/latest")
+                latest = self._get_first_success(
+                    f"/v1/sites/{parse.quote(site_id)}/devices/{parse.quote(device_id)}/statistics/latest",
+                    f"/v1/devices/{parse.quote(device_id)}/statistics/latest",
+                )
                 latest["deviceId"] = device_id
                 latest["deviceName"] = device.get("name") or device.get("model") or device.get("macAddress") or device_id
                 stats.append(latest)
@@ -196,12 +213,30 @@ class UniFiApiClient:
             try:
                 output[key] = collector()
             except Exception as exc:  # noqa: BLE001
+                if key == "isp_metrics" and is_not_available(exc):
+                    LOG.info("UniFi Site Manager ISP metrics endpoint is not available: %s", exc)
+                    output[key] = []
+                    continue
                 output["errors"][key] = str(exc)
                 LOG.warning("UniFi Site Manager %s collection failed: %s", key, exc)
         return output
 
     def _paged(self, path: str, limit: int = 200) -> list[dict]:
         return self._paged_url(f"{self.config.base_url}{path}", limit=limit)
+
+    def _paged_first_success(self, *paths: str, limit: int = 200) -> list[dict]:
+        last_error: Exception | None = None
+        for path in paths:
+            try:
+                return self._paged(path, limit=limit)
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if not is_endpoint_fallback_error(exc):
+                    raise
+                LOG.info("UniFi Network API path rejected, trying fallback: %s", path)
+        if last_error:
+            raise last_error
+        return []
 
     def _paged_url(self, url: str, limit: int = 200, api_key: str | None = None, verify_tls: bool | None = None) -> list[dict]:
         items: list[dict] = []
@@ -253,6 +288,20 @@ class UniFiApiClient:
 
     def _get(self, path: str) -> dict:
         return self._request_json(f"{self.config.base_url}{path}")
+
+    def _get_first_success(self, *paths: str) -> dict:
+        last_error: Exception | None = None
+        for path in paths:
+            try:
+                return self._get(path)
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                if not is_endpoint_fallback_error(exc):
+                    raise
+                LOG.info("UniFi Network API path rejected, trying fallback: %s", path)
+        if last_error:
+            raise last_error
+        return {}
 
     def _request_json(self, url: str, api_key: str | None = None, verify_tls: bool | None = None) -> dict:
         req = request.Request(url, headers={
@@ -376,6 +425,27 @@ def infer_site_id(sites: list[dict]) -> str:
     return str(first.get("id") or first.get("internalReference") or first.get("name") or "")
 
 
+def resolve_local_site_id(configured_site_id: str, sites: list[dict]) -> str:
+    configured = configured_site_id.strip()
+    if not configured or not sites:
+        return configured
+    for site in sites:
+        identifiers = {
+            str(site.get("id") or ""),
+            str(site.get("internalReference") or ""),
+            str(site.get("name") or ""),
+        }
+        if configured in identifiers:
+            return str(site.get("id") or configured)
+    inferred = infer_site_id(sites)
+    LOG.info(
+        "Configured UNIFI_SITE_ID %s was not found in local sites; using local site id %s",
+        configured,
+        inferred,
+    )
+    return inferred or configured
+
+
 def first_int(source: dict, *keys: str) -> int:
     for key in keys:
         value = source.get(key)
@@ -399,6 +469,19 @@ def first_float(source: dict, *keys: str) -> float:
 def compact_raw(source: dict) -> dict:
     keep = ("id", "name", "ipAddress", "macAddress", "model", "state", "type", "connectedAt", "uplinkDeviceId")
     return {key: source[key] for key in keep if key in source}
+
+
+def is_endpoint_fallback_error(exc: Exception) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.code in {400, 404}
+    message = str(exc)
+    return "HTTP Error 400" in message or "HTTP Error 404" in message
+
+
+def is_not_available(exc: Exception) -> bool:
+    if isinstance(exc, HTTPError):
+        return exc.code == 404
+    return "HTTP Error 404" in str(exc)
 
 
 def error_snapshot(error: str, checked_at: str, started: float) -> dict:

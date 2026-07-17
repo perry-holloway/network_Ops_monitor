@@ -37,6 +37,27 @@ class OpsHandler(SimpleHTTPRequestHandler):
             )
             self._json(snapshot)
             return
+        if parsed.path == "/api/discovery":
+            snapshot = self.store.latest_discovery_snapshot()
+            snapshot["discovery_enabled"] = self.config.lan_discovery_enabled
+            snapshot["discovery_configured"] = bool(
+                self.config.lan_discovery_enabled
+                and self.config.lan_discovery_subnets
+            )
+            self._json(snapshot)
+            return
+        if parsed.path == "/api/speed-test":
+            snapshot = self.store.latest_speed_test_snapshot()
+            snapshot["speed_test_enabled"] = self.config.speed_test_enabled
+            snapshot["speed_test_configured"] = bool(
+                self.config.speed_test_enabled
+                and self.config.speed_test_download_url
+            )
+            self._json(snapshot)
+            return
+        if parsed.path == "/api/speed-test/run":
+            self._json(self.monitor.run_speed_test())
+            return
         if parsed.path == "/api/history":
             query = parse_qs(parsed.query)
             target = query.get("target", [""])[0]

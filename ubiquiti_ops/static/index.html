@@ -117,6 +117,17 @@
     .metric { padding: 20px; }
     .metric .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
     .metric .value { font-size: 34px; font-weight: 900; margin-top: 8px; }
+    .speed-panel { padding: 20px; margin-bottom: 16px; }
+    .speed-header { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+    .speed-header h3 { margin: 4px 0 6px; font-size: 22px; letter-spacing: -0.03em; }
+    .speed-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .speed-cell {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.48);
+      padding: 14px;
+    }
+    .speed-cell .value { font-size: 26px; font-weight: 950; margin-top: 6px; }
     .diagram-panel { padding: 18px; margin-bottom: 16px; overflow: hidden; }
     .diagram-header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 18px; }
     .diagram-header h2 { margin: 0; font-size: 18px; }
@@ -266,6 +277,7 @@
     }
     @media (max-width: 900px) {
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
+      .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .network-map {
         grid-template-columns: 1fr;
@@ -308,6 +320,7 @@
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
     <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
+    <a href="#discovery" data-page-link="discovery">LAN Discovery</a>
   </nav>
 
   <main>
@@ -324,6 +337,36 @@
         <div class="card metric"><div class="label">Healthy</div><div id="healthyChecks" class="value">-</div></div>
         <div class="card metric"><div class="label">Down</div><div id="downChecks" class="value">-</div></div>
         <div class="card metric"><div class="label">Critical Down</div><div id="criticalDown" class="value">-</div></div>
+      </section>
+      <section class="card speed-panel">
+        <div class="speed-header">
+          <div>
+            <div class="eyebrow">WAN performance</div>
+            <h3>Internet speed test</h3>
+            <p id="speedStatus" class="subtle">Waiting for a speed test...</p>
+          </div>
+          <div class="actions">
+            <button id="runSpeedTest">Run speed test</button>
+          </div>
+        </div>
+        <div class="speed-grid">
+          <div class="speed-cell">
+            <div class="label">Download</div>
+            <div id="speedDownload" class="value">-</div>
+          </div>
+          <div class="speed-cell">
+            <div class="label">Upload</div>
+            <div id="speedUpload" class="value">-</div>
+          </div>
+          <div class="speed-cell">
+            <div class="label">Latency</div>
+            <div id="speedLatency" class="value">-</div>
+          </div>
+          <div class="speed-cell">
+            <div class="label">Result</div>
+            <div id="speedResult" class="value">-</div>
+          </div>
+        </div>
       </section>
       <section class="grid quick-links">
         <div class="card nav-card">
@@ -349,6 +392,14 @@
             <p class="subtle">View UniFi devices, client activity, traffic counters, and collector state.</p>
           </div>
           <a class="page-link" href="#unifi">Open UniFi page</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Discovery</div>
+            <h3>LAN device scan</h3>
+            <p class="subtle">Find devices visible on configured local subnets, even before UniFi client API access is available.</p>
+          </div>
+          <a class="page-link" href="#discovery">Open discovery page</a>
         </div>
       </section>
     </section>
@@ -435,11 +486,44 @@
         </aside>
       </section>
     </section>
+
+    <section id="page-discovery" class="page" data-page="discovery">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">LAN discovery</div>
+          <h2>Discovered local devices</h2>
+          <p class="subtle">A lightweight subnet scan that finds reachable IPs and enriches them with MAC data when available.</p>
+        </div>
+        <span id="discoveryStatus" class="subtle">Waiting for discovery data...</span>
+      </div>
+      <section class="card unifi-panel">
+        <div id="discoveryNotice" class="notice">Enable LAN discovery in .env to populate this section.</div>
+        <div id="discoveryGrid" class="unifi-grid"></div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <h2>Reachable devices</h2>
+          <span id="discoveryCount" class="subtle">-</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>Hostname</th>
+              <th>MAC</th>
+              <th>Seen by</th>
+              <th>Latency</th>
+            </tr>
+          </thead>
+          <tbody id="discoveryBody"></tbody>
+        </table>
+      </section>
+    </section>
   </main>
 
   <script>
-    const pages = ['summary', 'collection-health', 'network-map', 'unifi'];
-    const state = { summary: null, unifi: null, selected: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'discovery'];
+    const state = { summary: null, unifi: null, discovery: null, speed: null, selected: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -451,9 +535,13 @@
     async function refresh() {
       state.summary = await api('/api/summary');
       state.unifi = await api('/api/unifi');
+      state.discovery = await api('/api/discovery');
+      state.speed = await api('/api/speed-test');
       renderSummary();
+      renderSpeedTest();
       renderDiagram();
       renderUnifi();
+      renderDiscovery();
       renderTable();
       $('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
     }
@@ -483,6 +571,49 @@
       $('downChecks').textContent = totals.down;
       $('criticalDown').textContent = totals.critical_down;
       $('criticalDown').style.color = totals.critical_down ? 'var(--red)' : 'var(--green)';
+    }
+
+    function renderSpeedTest() {
+      const snapshot = state.speed || {};
+      const download = Number(snapshot.download_mbps || 0);
+      const upload = snapshot.upload_mbps === null || snapshot.upload_mbps === undefined ? null : Number(snapshot.upload_mbps || 0);
+      const thresholds = snapshot.thresholds || {};
+      const status = $('speedStatus');
+      const result = $('speedResult');
+
+      if (!snapshot.speed_test_enabled) {
+        status.textContent = 'Speed test is disabled. Set SPEED_TEST_ENABLED=true in local .env.';
+        $('speedDownload').textContent = '-';
+        $('speedUpload').textContent = '-';
+        $('speedLatency').textContent = '-';
+        result.textContent = 'Disabled';
+        result.style.color = 'var(--amber)';
+        return;
+      }
+      if (!snapshot.speed_test_configured) {
+        status.textContent = 'Speed test needs SPEED_TEST_DOWNLOAD_URL in local .env.';
+        result.textContent = 'Config';
+        result.style.color = 'var(--amber)';
+        return;
+      }
+      if (!snapshot.configured) {
+        status.textContent = 'No speed test has been run yet. Click Run speed test to measure WAN performance.';
+        $('speedDownload').textContent = '-';
+        $('speedUpload').textContent = snapshot.upload_enabled ? '-' : 'Off';
+        $('speedLatency').textContent = '-';
+        result.textContent = 'Ready';
+        result.style.color = 'var(--cyan)';
+        return;
+      }
+
+      status.textContent = snapshot.error
+        ? `Last run ${formatDate(snapshot.checked_at)} - ${snapshot.error}`
+        : `Last run ${formatDate(snapshot.checked_at)}. Minimums: ${thresholds.min_download_mbps || 0} Mbps down${snapshot.upload_enabled ? `, ${thresholds.min_upload_mbps || 0} Mbps up` : ''}.`;
+      $('speedDownload').textContent = `${download.toFixed(1)} Mbps`;
+      $('speedUpload').textContent = upload === null ? 'Off' : `${upload.toFixed(1)} Mbps`;
+      $('speedLatency').textContent = `${snapshot.latency_ms || 0} ms`;
+      result.textContent = snapshot.ok ? 'Good' : 'Check';
+      result.style.color = snapshot.ok ? 'var(--green)' : 'var(--amber)';
     }
 
     function filteredChecks() {
@@ -660,6 +791,74 @@
       `;
     }
 
+    function renderDiscovery() {
+      const snapshot = state.discovery || {};
+      const notice = $('discoveryNotice');
+      const grid = $('discoveryGrid');
+      const status = $('discoveryStatus');
+      const body = $('discoveryBody');
+      const devices = snapshot.devices || [];
+      grid.innerHTML = '';
+      body.innerHTML = '';
+
+      if (!snapshot.discovery_enabled) {
+        status.textContent = 'Discovery disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set LAN_DISCOVERY_ENABLED=true and LAN_DISCOVERY_SUBNETS in local .env to scan local devices.';
+      } else if (!snapshot.discovery_configured) {
+        status.textContent = 'Subnets missing';
+        notice.style.display = 'block';
+        notice.textContent = 'LAN discovery is enabled, but no subnets are configured.';
+      } else if (!snapshot.configured) {
+        status.textContent = 'Waiting for first scan';
+        notice.style.display = 'block';
+        notice.textContent = 'Run checks now or wait for the next interval to collect the first LAN discovery snapshot.';
+      } else {
+        status.textContent = `Updated ${formatDate(snapshot.checked_at)}`;
+        notice.style.display = snapshot.errors && snapshot.errors.length ? 'block' : 'none';
+        notice.textContent = (snapshot.errors || []).slice(0, 3).join(' | ');
+      }
+
+      const withMac = devices.filter(device => device.mac).length;
+      const viaPing = devices.filter(device => device.ping).length;
+      const viaPorts = devices.filter(device => (device.open_ports || []).length).length;
+      grid.innerHTML = `
+        ${renderInsightCard('Discovery coverage', [
+          ['Subnets', (snapshot.subnets || []).join(', ') || '-'],
+          ['Hosts scanned', snapshot.scanned_hosts || 0],
+          ['Devices found', devices.length],
+        ])}
+        ${renderInsightCard('Detection methods', [
+          ['Ping responses', viaPing],
+          ['TCP port responses', viaPorts],
+          ['MACs learned', withMac],
+        ])}
+        ${renderInsightCard('Probe settings', [
+          ['Ports', (snapshot.ports || []).join(', ') || '-'],
+          ['Scan latency', `${snapshot.latency_ms || 0} ms`],
+          ['Errors', (snapshot.errors || []).length],
+        ])}
+      `;
+
+      $('discoveryCount').textContent = `${devices.length} devices`;
+      for (const device of devices) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><strong>${escapeHtml(device.ip)}</strong></td>
+          <td>${escapeHtml(device.hostname || '-')}</td>
+          <td>${escapeHtml(device.mac || '-')}</td>
+          <td>${discoveryMethod(device)}</td>
+          <td>${device.latency_ms || 0} ms</td>
+        `;
+        body.appendChild(row);
+      }
+      if (!devices.length) {
+        const row = document.createElement('tr');
+        row.innerHTML = '<td colspan="5" class="subtle">No devices discovered yet.</td>';
+        body.appendChild(row);
+      }
+    }
+
     function renderInsightCard(title, rows) {
       return `
         <div class="insight-card">
@@ -696,6 +895,14 @@
     function isOnlineDevice(device) {
       const status = deviceStatus(device).toLowerCase();
       return ['online', 'connected', 'active', 'up', 'true'].includes(status);
+    }
+
+    function discoveryMethod(device) {
+      const methods = [];
+      if (device.ping) methods.push('ping');
+      if ((device.open_ports || []).length) methods.push(`ports ${device.open_ports.join(', ')}`);
+      if (device.neighbor_state) methods.push(device.neighbor_state);
+      return escapeHtml(methods.join(' / ') || 'reachable');
     }
 
     function findGateway(devices) {
@@ -798,6 +1005,18 @@
       } finally {
         $('runChecks').disabled = false;
         $('runChecks').textContent = 'Run checks now';
+      }
+    });
+    $('runSpeedTest').addEventListener('click', async () => {
+      $('runSpeedTest').disabled = true;
+      $('runSpeedTest').textContent = 'Testing...';
+      $('speedStatus').textContent = 'Running speed test. This may take a few seconds.';
+      try {
+        state.speed = await api('/api/speed-test/run');
+        renderSpeedTest();
+      } finally {
+        $('runSpeedTest').disabled = false;
+        $('runSpeedTest').textContent = 'Run speed test';
       }
     });
 

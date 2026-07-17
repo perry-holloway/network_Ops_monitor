@@ -6,6 +6,8 @@ import time
 
 from .checks import check_device, check_dns, check_http, check_wan
 from .config import Config
+from .discovery import DiscoveryConfig, discover_lan
+from .speedtest import SpeedTestConfig, run_speed_test
 from .store import Store
 from .unifi_api import UniFiApiClient
 
@@ -42,7 +44,29 @@ class Monitor:
         if self.config.unifi_api_enabled:
             snapshot = UniFiApiClient.from_app_config(self.config).collect()
             self.store.add_unifi_snapshot(snapshot)
+        if self.config.lan_discovery_enabled:
+            snapshot = discover_lan(DiscoveryConfig(
+                subnets=self.config.lan_discovery_subnets,
+                ports=self.config.lan_discovery_ports,
+                max_hosts=self.config.lan_discovery_max_hosts,
+            ))
+            self.store.add_discovery_snapshot(snapshot)
         return results
+
+    def run_speed_test(self) -> dict:
+        snapshot = run_speed_test(SpeedTestConfig(
+            enabled=self.config.speed_test_enabled,
+            download_url=self.config.speed_test_download_url,
+            upload_url=self.config.speed_test_upload_url,
+            upload_enabled=self.config.speed_test_upload_enabled,
+            download_bytes=self.config.speed_test_download_bytes,
+            upload_bytes=self.config.speed_test_upload_bytes,
+            timeout_seconds=self.config.speed_test_timeout_seconds,
+            min_download_mbps=self.config.speed_test_min_download_mbps,
+            min_upload_mbps=self.config.speed_test_min_upload_mbps,
+        ))
+        self.store.add_speed_test_snapshot(snapshot)
+        return snapshot
 
     def _run(self) -> None:
         while not self._stop.is_set():

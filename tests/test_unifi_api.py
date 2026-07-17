@@ -1,11 +1,35 @@
 import unittest
 
-from ubiquiti_ops.unifi_api import UniFiApiClient, UniFiApiConfig, build_traffic_insights, infer_site_id
+from ubiquiti_ops.unifi_api import (
+    UniFiApiClient,
+    UniFiApiConfig,
+    build_traffic_insights,
+    infer_site_id,
+    resolve_local_site_id,
+)
 
 
 class UniFiApiTests(unittest.TestCase):
     def test_infer_site_id_prefers_id(self):
         self.assertEqual(infer_site_id([{"id": "site-id", "internalReference": "default"}]), "site-id")
+
+    def test_resolve_local_site_id_replaces_unknown_configured_id(self):
+        self.assertEqual(
+            resolve_local_site_id(
+                "site-manager-id",
+                [{"id": "local-site-uuid", "internalReference": "default", "name": "Default"}],
+            ),
+            "local-site-uuid",
+        )
+
+    def test_resolve_local_site_id_accepts_default_alias(self):
+        self.assertEqual(
+            resolve_local_site_id(
+                "default",
+                [{"id": "local-site-uuid", "internalReference": "default", "name": "Default"}],
+            ),
+            "local-site-uuid",
+        )
 
     def test_build_traffic_insights_uses_clients_and_device_stats(self):
         devices = [{
@@ -97,6 +121,85 @@ class UniFiApiTests(unittest.TestCase):
         self.assertEqual(snapshot["site_manager_hosts"][0]["id"], "host-1")
         self.assertEqual(snapshot["site_manager_devices"][0]["name"], "UDM")
 
+    def test_configured_site_id_continues_when_site_listing_404s(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local/proxy/network/integration",
+            api_key="network-key",
+            site_id="site-1",
+            legacy_stats_enabled=False,
+        ))
+        client.list_sites = lambda: (_ for _ in ()).throw(Exception("HTTP Error 404: Not Found"))
+        client.list_devices = lambda site_id: [{"id": "gateway-1", "name": "UDM"}]
+        client.list_clients = lambda site_id: [{"id": "client-1", "name": "Laptop"}]
+        client.collect_device_statistics = lambda site_id, devices: []
+
+        snapshot = client.collect()
+
+        self.assertTrue(snapshot["ok"])
+        self.assertEqual(snapshot["site_id"], "site-1")
+        self.assertEqual(snapshot["devices"][0]["name"], "UDM")
+        self.assertEqual(snapshot["clients"][0]["name"], "Laptop")
+
+    def test_network_devices_fall_back_to_top_level_endpoint_on_404(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local/proxy/network/integration",
+            api_key="network-key",
+            site_id="site-1",
+        ))
+        calls = []
+
+        def fake_paged(path, limit=200):
+            calls.append(path)
+            if path == "/v1/sites/site-1/devices":
+                raise Exception("HTTP Error 404: Not Found")
+            return [{"id": "gateway-1"}]
+
+        client._paged = fake_paged
+        devices = client.list_devices("site-1")
+
+        self.assertEqual(devices, [{"id": "gateway-1"}])
+        self.assertEqual(calls, ["/v1/sites/site-1/devices", "/v1/devices"])
+
+    def test_network_devices_fall_back_to_top_level_endpoint_on_400(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local/proxy/network/integration",
+            api_key="network-key",
+            site_id="site-1",
+        ))
+        calls = []
+
+        def fake_paged(path, limit=200):
+            calls.append(path)
+            if path == "/v1/sites/site-1/devices":
+                raise Exception("HTTP Error 400:")
+            return [{"id": "gateway-1"}]
+
+        client._paged = fake_paged
+        devices = client.list_devices("site-1")
+
+        self.assertEqual(devices, [{"id": "gateway-1"}])
+        self.assertEqual(calls, ["/v1/sites/site-1/devices", "/v1/devices"])
+
+    def test_network_clients_fall_back_to_top_level_endpoint_on_404(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local/proxy/network/integration",
+            api_key="network-key",
+            site_id="site-1",
+        ))
+        calls = []
+
+        def fake_paged(path, limit=200):
+            calls.append(path)
+            if path == "/v1/sites/site-1/clients":
+                raise Exception("HTTP Error 404: Not Found")
+            return [{"id": "client-1"}]
+
+        client._paged = fake_paged
+        clients = client.list_clients("site-1")
+
+        self.assertEqual(clients, [{"id": "client-1"}])
+        self.assertEqual(calls, ["/v1/sites/site-1/clients", "/v1/clients"])
+
     def test_site_manager_paging_uses_next_token(self):
         client = UniFiApiClient(UniFiApiConfig(
             base_url="https://example.local",
@@ -119,6 +222,23 @@ class UniFiApiTests(unittest.TestCase):
 
         self.assertEqual(hosts, [{"id": "host-1"}, {"id": "host-2"}])
         self.assertEqual(len(calls), 2)
+
+    def test_site_manager_isp_metrics_404_is_not_an_error(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local",
+            api_key="",
+            site_manager_enabled=True,
+            site_manager_api_key="site-manager-key",
+        ))
+        client.list_site_manager_sites = lambda: [{"siteId": "site-1"}]
+        client.list_site_manager_hosts = lambda: [{"id": "host-1"}]
+        client.list_site_manager_devices = lambda: [{"id": "gateway-1"}]
+        client.list_site_manager_isp_metrics = lambda: (_ for _ in ()).throw(Exception("HTTP Error 404: Not Found"))
+
+        snapshot = client.collect_site_manager()
+
+        self.assertEqual(snapshot["isp_metrics"], [])
+        self.assertEqual(snapshot["errors"], {})
 
 
 if __name__ == "__main__":
