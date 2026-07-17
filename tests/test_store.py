@@ -183,6 +183,84 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(snapshot["traffic_insights"]["top_devices"][0]["localDisplayName"], "Dream Machine")
             self.assertEqual(snapshot["traffic_insights"]["top_clients"][0]["localDisplayName"], "Living Room Camera")
 
+    def test_network_timeline_builds_change_events(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = Store(str(Path(temp) / "ops-console.db"))
+            store.add_result({
+                "kind": "device",
+                "target": "192.168.1.10",
+                "name": "Storage NAS",
+                "sensitivity": "critical",
+                "status": "online",
+                "ok": True,
+                "latency_ms": 5,
+                "checked_at": "2026-07-17T10:00:00+00:00",
+                "details": {},
+            })
+            store.add_result({
+                "kind": "device",
+                "target": "192.168.1.10",
+                "name": "Storage NAS",
+                "sensitivity": "critical",
+                "status": "offline",
+                "ok": False,
+                "latency_ms": 1000,
+                "checked_at": "2026-07-17T10:05:00+00:00",
+                "details": {},
+            })
+            store.add_unifi_snapshot({
+                "ok": True,
+                "checked_at": "2026-07-17T10:00:00+00:00",
+                "site_id": "default",
+                "latency_ms": 25,
+                "site_manager_devices": [{"id": "ap-1", "name": "Office AP", "state": "ONLINE"}],
+                "devices": [],
+                "clients": [{"id": "client-1", "name": "Camera", "trusted": False, "ipAddress": "192.168.1.50"}],
+                "traffic_insights": {},
+            })
+            store.add_unifi_snapshot({
+                "ok": True,
+                "checked_at": "2026-07-17T10:05:00+00:00",
+                "site_id": "default",
+                "latency_ms": 25,
+                "site_manager_devices": [{"id": "ap-1", "name": "Office AP", "state": "OFFLINE"}],
+                "devices": [],
+                "clients": [],
+                "traffic_insights": {"stressed_device_count": 1},
+            })
+            store.add_speed_test_snapshot({
+                "ok": True,
+                "checked_at": "2026-07-17T10:00:00+00:00",
+                "download_mbps": 300,
+                "upload_mbps": 30,
+                "latency_ms": 10,
+                "error": "",
+            })
+            store.add_speed_test_snapshot({
+                "ok": True,
+                "checked_at": "2026-07-17T10:05:00+00:00",
+                "download_mbps": 100,
+                "upload_mbps": 25,
+                "latency_ms": 12,
+                "error": "",
+            })
+            store.update_entity_override("client", "client-1", {
+                "display_name": "Living Room Camera",
+                "trusted": "true",
+            })
+
+            timeline = store.network_timeline(50)
+            kinds = {event["kind"] for event in timeline["events"]}
+
+            self.assertTrue(timeline["configured"])
+            self.assertIn("check_failed", kinds)
+            self.assertIn("check_down", kinds)
+            self.assertIn("device_offline", kinds)
+            self.assertIn("client_seen", kinds)
+            self.assertIn("client_disappeared", kinds)
+            self.assertIn("speed_drop", kinds)
+            self.assertIn("inventory_updated", kinds)
+
 
 if __name__ == "__main__":
     unittest.main()

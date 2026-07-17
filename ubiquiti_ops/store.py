@@ -182,6 +182,59 @@ class Store:
             "critical_down": critical_down,
         }
 
+    def network_timeline(self, limit: int = 100) -> dict:
+        limit = max(1, min(int(limit or 100), 500))
+        events: list[dict] = []
+        with self._lock, self._connection() as conn:
+            check_rows = conn.execute(
+                """
+                SELECT *
+                FROM checks
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit * 4,),
+            ).fetchall()
+            unifi_rows = conn.execute(
+                """
+                SELECT *
+                FROM unifi_snapshots
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            speed_rows = conn.execute(
+                """
+                SELECT *
+                FROM speed_test_snapshots
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            override_rows = conn.execute(
+                """
+                SELECT *
+                FROM entity_overrides
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+        events.extend(_check_timeline_events([row_to_dict(row) for row in reversed(check_rows)]))
+        events.extend(_unifi_timeline_events(list(reversed(unifi_rows))))
+        events.extend(_speed_timeline_events(list(reversed(speed_rows))))
+        events.extend(_override_timeline_events(list(override_rows)))
+        events = sorted(events, key=lambda event: event.get("timestamp") or "", reverse=True)
+        return {
+            "configured": bool(events),
+            "count": len(events[:limit]),
+            "events": events[:limit],
+            "totals": dict(Counter(event.get("severity", "info") for event in events[:limit])),
+        }
+
     def add_unifi_snapshot(self, snapshot: dict) -> None:
         insights = snapshot.get("traffic_insights", {})
         with self._lock, self._connection() as conn:
@@ -525,6 +578,274 @@ def row_to_dict(row: sqlite3.Row) -> dict:
     except json.JSONDecodeError:
         data["details"] = {}
     return data
+
+
+def _check_timeline_events(rows: list[dict]) -> list[dict]:
+    events: list[dict] = []
+    previous: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        key = (row.get("kind", ""), row.get("target", ""))
+        prior = previous.get(key)
+        if prior and prior.get("ok") != row.get("ok"):
+            recovered = bool(row.get("ok"))
+            events.append(_timeline_event(
+                timestamp=row.get("checked_at", ""),
+                kind="check_recovered" if recovered else "check_failed",
+                severity="success" if recovered else "critical",
+                title=f"{row.get('name') or row.get('target')} {'recovered' if recovered else 'went down'}",
+                summary=f"{row.get('kind')} check changed from {prior.get('status')} to {row.get('status')}.",
+                entity_kind="check",
+                entity_id=row.get("target", ""),
+                details={
+                    "target": row.get("target", ""),
+                    "kind": row.get("kind", ""),
+                    "latency_ms": row.get("latency_ms", 0),
+                    "status": row.get("status", ""),
+                },
+            ))
+        if not row.get("ok"):
+            events.append(_timeline_event(
+                timestamp=row.get("checked_at", ""),
+                kind="check_down",
+                severity="critical" if row.get("sensitivity") in {"critical", "high"} else "warning",
+                title=f"{row.get('name') or row.get('target')} reported {row.get('status')}",
+                summary=f"{row.get('kind')} check for {row.get('target')} is not healthy.",
+                entity_kind="check",
+                entity_id=row.get("target", ""),
+                details={
+                    "target": row.get("target", ""),
+                    "kind": row.get("kind", ""),
+                    "latency_ms": row.get("latency_ms", 0),
+                    "status": row.get("status", ""),
+                },
+            ))
+        previous[key] = row
+    return events
+
+
+def _unifi_timeline_events(rows: list[sqlite3.Row]) -> list[dict]:
+    events: list[dict] = []
+    previous_devices: dict[str, dict] = {}
+    previous_clients: dict[str, dict] = {}
+    for row in rows:
+        payload = _safe_json(row["payload"])
+        timestamp = payload.get("checked_at") or row["checked_at"]
+        devices = _entity_map([*(payload.get("site_manager_devices", []) or []), *(payload.get("devices", []) or [])])
+        clients = _entity_map(payload.get("clients", []) or [])
+        insights = payload.get("traffic_insights", {}) or {}
+
+        for key, device in devices.items():
+            prior = previous_devices.get(key)
+            if not prior:
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="device_seen",
+                    severity="info",
+                    title=f"{_entity_name(device, 'device')} appeared in UniFi inventory",
+                    summary=f"{device.get('model') or device.get('type') or 'Device'} {device.get('ipAddress') or device.get('ip') or ''}".strip(),
+                    entity_kind="device",
+                    entity_id=key,
+                    details={"model": device.get("model", ""), "ip": device.get("ipAddress") or device.get("ip") or ""},
+                ))
+            elif _device_is_online(prior) != _device_is_online(device):
+                online = _device_is_online(device)
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="device_online" if online else "device_offline",
+                    severity="success" if online else "critical",
+                    title=f"{_entity_name(device, 'device')} {'came online' if online else 'went offline'}",
+                    summary=f"State changed from {_device_status(prior)} to {_device_status(device)}.",
+                    entity_kind="device",
+                    entity_id=key,
+                    details={"previous": _device_status(prior), "current": _device_status(device)},
+                ))
+
+        for key, client in clients.items():
+            prior = previous_clients.get(key)
+            if not prior:
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="client_seen",
+                    severity="info" if _client_is_trusted(client) else "warning",
+                    title=f"{_entity_name(client, 'client')} appeared on the network",
+                    summary=f"{client.get('ipAddress') or client.get('ip') or 'No IP'} / {client.get('macAddress') or client.get('mac') or 'No MAC'}",
+                    entity_kind="client",
+                    entity_id=key,
+                    details={"trusted": _client_is_trusted(client), "type": client.get("type", "")},
+                ))
+            elif _client_is_trusted(prior) != _client_is_trusted(client):
+                trusted = _client_is_trusted(client)
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="client_trust_changed",
+                    severity="success" if trusted else "warning",
+                    title=f"{_entity_name(client, 'client')} trust status changed",
+                    summary=f"Client is now {'trusted' if trusted else 'untrusted / review'}.",
+                    entity_kind="client",
+                    entity_id=key,
+                    details={"trusted": trusted},
+                ))
+
+        for key, prior in previous_clients.items():
+            if key not in clients:
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="client_disappeared",
+                    severity="info",
+                    title=f"{_entity_name(prior, 'client')} disappeared from the latest client list",
+                    summary=f"Previously seen as {prior.get('ipAddress') or prior.get('ip') or 'No IP'}.",
+                    entity_kind="client",
+                    entity_id=key,
+                    details={"last_ip": prior.get("ipAddress") or prior.get("ip") or ""},
+                ))
+
+        if int(insights.get("stressed_device_count") or 0):
+            events.append(_timeline_event(
+                timestamp=timestamp,
+                kind="stressed_devices",
+                severity="warning",
+                title="UniFi reported stressed infrastructure devices",
+                summary=f"{int(insights.get('stressed_device_count') or 0)} device(s) showed high CPU or memory.",
+                entity_kind="unifi",
+                entity_id=payload.get("site_id", ""),
+                details={"stressed_device_count": int(insights.get("stressed_device_count") or 0)},
+            ))
+
+        previous_devices = devices
+        previous_clients = clients
+    return events
+
+
+def _speed_timeline_events(rows: list[sqlite3.Row]) -> list[dict]:
+    events: list[dict] = []
+    previous: dict | None = None
+    for row in rows:
+        payload = _safe_json(row["payload"])
+        timestamp = payload.get("checked_at") or row["checked_at"]
+        ok = bool(payload.get("ok", row["ok"]))
+        if not ok:
+            events.append(_timeline_event(
+                timestamp=timestamp,
+                kind="speed_test_failed",
+                severity="warning",
+                title="Speed test reported a problem",
+                summary=payload.get("error") or row["error"] or "Speed test failed.",
+                entity_kind="speed",
+                entity_id="wan",
+                details={"error": payload.get("error") or row["error"] or ""},
+            ))
+        if previous:
+            prior_download = float(previous.get("download_mbps") or 0)
+            download = float(payload.get("download_mbps") or row["download_mbps"] or 0)
+            if prior_download and download < prior_download * 0.6:
+                events.append(_timeline_event(
+                    timestamp=timestamp,
+                    kind="speed_drop",
+                    severity="warning",
+                    title="WAN download speed dropped",
+                    summary=f"Download changed from {prior_download:.1f} Mbps to {download:.1f} Mbps.",
+                    entity_kind="speed",
+                    entity_id="wan",
+                    details={"previous_download_mbps": prior_download, "download_mbps": download},
+                ))
+        previous = {
+            "download_mbps": payload.get("download_mbps") or row["download_mbps"],
+            "upload_mbps": payload.get("upload_mbps") or row["upload_mbps"],
+        }
+    return events
+
+
+def _override_timeline_events(rows: list[sqlite3.Row]) -> list[dict]:
+    events: list[dict] = []
+    for row in rows:
+        name = row["display_name"] or row["entity_id"]
+        fields = [
+            label
+            for label in ["display_name", "owner", "location", "category", "trusted", "notes"]
+            if row[label]
+        ]
+        events.append(_timeline_event(
+            timestamp=row["updated_at"],
+            kind="inventory_updated",
+            severity="info",
+            title=f"{name} inventory metadata was updated",
+            summary=f"Updated fields: {', '.join(fields) if fields else 'metadata'}",
+            entity_kind=row["kind"],
+            entity_id=row["entity_id"],
+            details={
+                "display_name": row["display_name"],
+                "owner": row["owner"],
+                "location": row["location"],
+                "category": row["category"],
+                "trusted": row["trusted"],
+            },
+        ))
+    return events
+
+
+def _timeline_event(
+    *,
+    timestamp: str,
+    kind: str,
+    severity: str,
+    title: str,
+    summary: str,
+    entity_kind: str,
+    entity_id: str,
+    details: dict,
+) -> dict:
+    return {
+        "timestamp": timestamp,
+        "kind": kind,
+        "severity": severity,
+        "title": title,
+        "summary": summary,
+        "entity_kind": entity_kind,
+        "entity_id": entity_id,
+        "details": details,
+    }
+
+
+def _safe_json(raw: str) -> dict:
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _entity_map(items: list[dict]) -> dict[str, dict]:
+    output: dict[str, dict] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = _entity_key(item)
+        if key and key not in output:
+            output[key] = item
+    return output
+
+
+def _entity_name(item: dict, fallback: str) -> str:
+    return str(
+        item.get("localDisplayName")
+        or item.get("trustedName")
+        or item.get("name")
+        or item.get("hostname")
+        or item.get("displayName")
+        or item.get("macAddress")
+        or item.get("mac")
+        or item.get("id")
+        or f"Unknown {fallback}"
+    )
+
+
+def _device_status(device: dict) -> str:
+    status = device.get("status") or device.get("state") or device.get("stateText") or device.get("online")
+    if status is True:
+        return "online"
+    if status is False:
+        return "offline"
+    return str(status or "unknown")
 
 
 def summarize_unifi_trends(points: list[dict]) -> dict:
