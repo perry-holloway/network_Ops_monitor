@@ -3,10 +3,12 @@ import unittest
 from ubiquiti_ops.unifi_api import (
     UniFiApiClient,
     UniFiApiConfig,
+    annotate_trusted_clients,
     build_traffic_insights,
     infer_site_id,
     resolve_local_site_id,
 )
+from ubiquiti_ops.config import TrustedClient
 
 
 class UniFiApiTests(unittest.TestCase):
@@ -62,6 +64,22 @@ class UniFiApiTests(unittest.TestCase):
         self.assertEqual(insights["total_client_tx_bytes"], 250)
         self.assertEqual(insights["top_clients"][0]["name"], "Laptop")
         self.assertEqual(insights["top_devices"][0]["total_rate_bps"], 600)
+
+    def test_annotate_trusted_clients_marks_known_macs(self):
+        clients = [
+            {"id": "client-1", "macAddress": "AA-BB-CC-DD-EE-FF", "name": "Unknown"},
+            {"id": "client-2", "macAddress": "11:22:33:44:55:66", "name": "Phone"},
+        ]
+
+        annotated = annotate_trusted_clients(clients, (
+            TrustedClient("aa:bb:cc:dd:ee:ff", "Work Laptop", "work"),
+        ))
+
+        self.assertTrue(annotated[0]["trusted"])
+        self.assertEqual(annotated[0]["trustedName"], "Work Laptop")
+        self.assertEqual(annotated[0]["trustedCategory"], "work")
+        self.assertFalse(annotated[1]["trusted"])
+        self.assertEqual(annotated[1]["trustedCategory"], "untrusted")
 
     def test_paged_url_accepts_list_payloads(self):
         client = UniFiApiClient(UniFiApiConfig(base_url="https://example.local", api_key="key"))
@@ -139,6 +157,24 @@ class UniFiApiTests(unittest.TestCase):
         self.assertEqual(snapshot["site_id"], "site-1")
         self.assertEqual(snapshot["devices"][0]["name"], "UDM")
         self.assertEqual(snapshot["clients"][0]["name"], "Laptop")
+
+    def test_collect_annotates_trusted_clients(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local/proxy/network/integration",
+            api_key="network-key",
+            site_id="site-1",
+            legacy_stats_enabled=False,
+            trusted_clients=(TrustedClient("aa:bb:cc:dd:ee:ff", "Work Laptop", "trusted"),),
+        ))
+        client.list_sites = lambda: [{"id": "site-1"}]
+        client.list_devices = lambda site_id: []
+        client.list_clients = lambda site_id: [{"id": "client-1", "macAddress": "AA-BB-CC-DD-EE-FF"}]
+        client.collect_device_statistics = lambda site_id, devices: []
+
+        snapshot = client.collect()
+
+        self.assertTrue(snapshot["clients"][0]["trusted"])
+        self.assertEqual(snapshot["clients"][0]["trustedName"], "Work Laptop")
 
     def test_network_devices_fall_back_to_top_level_endpoint_on_404(self):
         client = UniFiApiClient(UniFiApiConfig(

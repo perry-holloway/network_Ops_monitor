@@ -10,7 +10,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib import parse, request
 
-from .config import Config
+from .config import Config, TrustedClient, normalize_mac
 
 LOG = logging.getLogger("ubiquiti-ops.unifi-api")
 
@@ -26,6 +26,7 @@ class UniFiApiConfig:
     site_manager_enabled: bool = False
     site_manager_base_url: str = "https://api.ui.com"
     site_manager_api_key: str = ""
+    trusted_clients: tuple[TrustedClient, ...] = ()
 
 
 class UniFiApiClient:
@@ -45,6 +46,7 @@ class UniFiApiClient:
             site_manager_enabled=config.unifi_site_manager_enabled,
             site_manager_base_url=config.unifi_site_manager_base_url,
             site_manager_api_key=config.unifi_site_manager_api_key or config.unifi_api_key,
+            trusted_clients=config.trusted_clients,
         ))
 
     def collect(self) -> dict:
@@ -84,6 +86,7 @@ class UniFiApiClient:
                 else:
                     devices = self.list_devices(site_id)
                     clients = self.list_clients(site_id)
+                    clients = annotate_trusted_clients(clients, self.config.trusted_clients)
                     device_stats = self.collect_device_statistics(site_id, devices)
                     legacy_stats = self.collect_legacy_stats(site_id) if self.config.legacy_stats_enabled else {}
             except Exception as exc:  # noqa: BLE001
@@ -335,12 +338,25 @@ def build_traffic_insights(
     top_devices = sorted(device_activity, key=lambda item: item["total_rate_bps"], reverse=True)[:10]
     total_rx = sum(item["rx_bytes"] for item in client_activity)
     total_tx = sum(item["tx_bytes"] for item in client_activity)
+    total_device_rx_rate = sum(item["rx_rate_bps"] for item in device_activity)
+    total_device_tx_rate = sum(item["tx_rate_bps"] for item in device_activity)
+    active_clients = len([item for item in client_activity if item["total_bytes"] > 0])
+    stressed_devices = len([
+        item for item in device_activity
+        if item["cpu_pct"] >= 80 or item["memory_pct"] >= 80
+    ])
 
     return {
         "client_count": len(client_activity),
         "device_count": len(device_activity),
+        "active_client_count": active_clients,
         "total_client_rx_bytes": total_rx,
         "total_client_tx_bytes": total_tx,
+        "total_client_bytes": total_rx + total_tx,
+        "total_device_rx_rate_bps": total_device_rx_rate,
+        "total_device_tx_rate_bps": total_device_tx_rate,
+        "total_device_rate_bps": total_device_rx_rate + total_device_tx_rate,
+        "stressed_device_count": stressed_devices,
         "top_clients": top_clients,
         "top_devices": top_devices,
     }
@@ -349,25 +365,54 @@ def build_traffic_insights(
 def summarize_client(client: dict) -> dict:
     rx = first_int(client, "rxBytes", "rx_bytes", "bytesIn", "wiredRxBytes", "wirelessRxBytes")
     tx = first_int(client, "txBytes", "tx_bytes", "bytesOut", "wiredTxBytes", "wirelessTxBytes")
+    rx_rate = first_int(client, "rxRateBps", "rx_rate_bps", "rx_bytes-r", "wiredRxRateBps", "wirelessRxRateBps")
+    tx_rate = first_int(client, "txRateBps", "tx_rate_bps", "tx_bytes-r", "wiredTxRateBps", "wirelessTxRateBps")
     return {
         "id": str(client.get("id") or client.get("macAddress") or client.get("mac") or ""),
-        "name": str(client.get("name") or client.get("hostname") or client.get("macAddress") or "Unknown client"),
+        "name": str(client.get("trustedName") or client.get("name") or client.get("hostname") or client.get("macAddress") or "Unknown client"),
         "ip": str(client.get("ipAddress") or client.get("ip") or ""),
         "mac": str(client.get("macAddress") or client.get("mac") or ""),
         "type": str(client.get("type") or client.get("network") or "CLIENT"),
         "rx_bytes": rx,
         "tx_bytes": tx,
         "total_bytes": rx + tx,
+        "rx_rate_bps": rx_rate,
+        "tx_rate_bps": tx_rate,
+        "total_rate_bps": rx_rate + tx_rate,
         "raw": compact_raw(client),
-    }
+}
+
+
+def annotate_trusted_clients(clients: list[dict], trusted_clients: tuple[TrustedClient, ...]) -> list[dict]:
+    trusted_by_mac = {client.mac: client for client in trusted_clients if client.mac}
+    annotated: list[dict] = []
+    for client in clients:
+        enriched = dict(client)
+        mac = normalize_mac(str(client.get("macAddress") or client.get("mac") or ""))
+        trusted = trusted_by_mac.get(mac)
+        enriched["normalizedMac"] = mac
+        if trusted:
+            enriched["trusted"] = True
+            enriched["trustedName"] = trusted.name
+            enriched["trustedCategory"] = trusted.category
+        else:
+            enriched["trusted"] = False
+            enriched.setdefault("trustedCategory", "untrusted")
+        annotated.append(enriched)
+    return annotated
 
 
 def summarize_device(device: dict, stats: list[dict]) -> dict:
     device_id = str(device.get("id") or "")
     stat = next((item for item in stats if str(item.get("deviceId")) == device_id), {})
     uplink = stat.get("uplink") if isinstance(stat.get("uplink"), dict) else {}
-    tx_rate = first_int(uplink, "txRateBps", "tx_rate_bps", "tx_bytes-r")
-    rx_rate = first_int(uplink, "rxRateBps", "rx_rate_bps", "rx_bytes-r")
+    downlink = stat.get("downlink") if isinstance(stat.get("downlink"), dict) else {}
+    tx_rate = first_int(uplink, "txRateBps", "tx_rate_bps", "tx_bytes-r", "tx_bytes") or first_int(stat, "txRateBps", "tx_rate_bps")
+    rx_rate = first_int(uplink, "rxRateBps", "rx_rate_bps", "rx_bytes-r", "rx_bytes") or first_int(stat, "rxRateBps", "rx_rate_bps")
+    uplink_tx_bytes = first_int(uplink, "txBytes", "tx_bytes", "bytes-s")
+    uplink_rx_bytes = first_int(uplink, "rxBytes", "rx_bytes", "bytes-r")
+    port_count = len(stat.get("ports") or device.get("ports") or []) if isinstance(stat.get("ports") or device.get("ports") or [], list) else 0
+    radio_count = len(stat.get("radios") or device.get("radios") or []) if isinstance(stat.get("radios") or device.get("radios") or [], list) else 0
     return {
         "id": device_id,
         "name": str(device.get("name") or device.get("model") or device.get("macAddress") or "Unknown device"),
@@ -378,8 +423,15 @@ def summarize_device(device: dict, stats: list[dict]) -> dict:
         "rx_rate_bps": rx_rate,
         "tx_rate_bps": tx_rate,
         "total_rate_bps": rx_rate + tx_rate,
-        "cpu_pct": first_float(stat, "cpuUtilizationPct", "cpu"),
-        "memory_pct": first_float(stat, "memoryUtilizationPct", "mem"),
+        "rx_bytes": uplink_rx_bytes,
+        "tx_bytes": uplink_tx_bytes,
+        "total_bytes": uplink_rx_bytes + uplink_tx_bytes,
+        "cpu_pct": first_float(stat, "cpuUtilizationPct", "cpu", "systemStats.cpu"),
+        "memory_pct": first_float(stat, "memoryUtilizationPct", "mem", "systemStats.mem"),
+        "uplink_name": str(uplink.get("name") or uplink.get("interface") or uplink.get("port") or ""),
+        "downlink_count": first_int(downlink, "count", "portCount"),
+        "port_count": port_count,
+        "radio_count": radio_count,
         "raw": compact_raw(device),
     }
 
@@ -505,8 +557,14 @@ def error_snapshot(error: str, checked_at: str, started: float) -> dict:
         "traffic_insights": {
             "client_count": 0,
             "device_count": 0,
+            "active_client_count": 0,
             "total_client_rx_bytes": 0,
             "total_client_tx_bytes": 0,
+            "total_client_bytes": 0,
+            "total_device_rx_rate_bps": 0,
+            "total_device_tx_rate_bps": 0,
+            "total_device_rate_bps": 0,
+            "stressed_device_count": 0,
             "top_clients": [],
             "top_devices": [],
         },

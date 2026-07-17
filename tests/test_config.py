@@ -1,7 +1,15 @@
 import unittest
 from unittest.mock import patch
 
-from ubiquiti_ops.config import Config, parse_csv, parse_named_targets, parse_ports, parse_watched_devices
+from ubiquiti_ops.config import (
+    Config,
+    normalize_mac,
+    parse_csv,
+    parse_named_targets,
+    parse_ports,
+    parse_trusted_clients,
+    parse_watched_devices,
+)
 
 
 class ConfigTests(unittest.TestCase):
@@ -29,6 +37,19 @@ class ConfigTests(unittest.TestCase):
             "10.0.0.0/30",
         ))
 
+    def test_parse_trusted_clients_normalizes_mac_and_category(self):
+        clients = parse_trusted_clients("AA-BB-CC-DD-EE-FF=Work Laptop:work;112233445566=NAS")
+        self.assertEqual(len(clients), 2)
+        self.assertEqual(clients[0].mac, "aa:bb:cc:dd:ee:ff")
+        self.assertEqual(clients[0].name, "Work Laptop")
+        self.assertEqual(clients[0].category, "work")
+        self.assertEqual(clients[1].mac, "11:22:33:44:55:66")
+        self.assertEqual(clients[1].category, "trusted")
+
+    def test_normalize_mac_rejects_invalid_values(self):
+        self.assertEqual(normalize_mac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff")
+        self.assertEqual(normalize_mac("not-a-mac"), "")
+
     def test_unifi_api_config_from_env(self):
         with patch.dict("os.environ", {
             "UNIFI_API_ENABLED": "true",
@@ -54,6 +75,7 @@ class ConfigTests(unittest.TestCase):
             "SPEED_TEST_TIMEOUT_SECONDS": "15",
             "SPEED_TEST_MIN_DOWNLOAD_MBPS": "50.5",
             "SPEED_TEST_MIN_UPLOAD_MBPS": "8.5",
+            "TRUSTED_CLIENTS": "AA-BB-CC-DD-EE-FF=Work Laptop:work",
         }):
             config = Config.from_env()
         self.assertTrue(config.unifi_api_enabled)
@@ -79,6 +101,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.speed_test_timeout_seconds, 15)
         self.assertEqual(config.speed_test_min_download_mbps, 50.5)
         self.assertEqual(config.speed_test_min_upload_mbps, 8.5)
+        self.assertEqual(config.trusted_clients[0].mac, "aa:bb:cc:dd:ee:ff")
+        self.assertEqual(config.trusted_clients[0].name, "Work Laptop")
 
 
 if __name__ == "__main__":

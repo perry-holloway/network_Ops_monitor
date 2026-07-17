@@ -19,6 +19,13 @@ class NamedTarget:
 
 
 @dataclass(frozen=True)
+class TrustedClient:
+    mac: str
+    name: str
+    category: str = "trusted"
+
+
+@dataclass(frozen=True)
 class Config:
     app_host: str
     app_port: int
@@ -39,6 +46,7 @@ class Config:
     unifi_site_manager_enabled: bool
     unifi_site_manager_base_url: str
     unifi_site_manager_api_key: str
+    trusted_clients: tuple[TrustedClient, ...]
     lan_discovery_enabled: bool
     lan_discovery_subnets: tuple[str, ...]
     lan_discovery_ports: tuple[int, ...]
@@ -75,6 +83,7 @@ class Config:
             unifi_site_manager_enabled=_bool("UNIFI_SITE_MANAGER_ENABLED", False),
             unifi_site_manager_base_url=os.getenv("UNIFI_SITE_MANAGER_BASE_URL", "https://api.ui.com").rstrip("/"),
             unifi_site_manager_api_key=os.getenv("UNIFI_SITE_MANAGER_API_KEY", "").strip(),
+            trusted_clients=parse_trusted_clients(os.getenv("TRUSTED_CLIENTS", "")),
             lan_discovery_enabled=_bool("LAN_DISCOVERY_ENABLED", False),
             lan_discovery_subnets=parse_csv(os.getenv("LAN_DISCOVERY_SUBNETS", "192.168.1.0/24")),
             lan_discovery_ports=parse_ports(os.getenv("LAN_DISCOVERY_PORTS", "22,53,80,443,445,8080,8443")),
@@ -121,6 +130,30 @@ def parse_named_targets(raw: str) -> tuple[NamedTarget, ...]:
         else:
             targets.append(NamedTarget(item, item))
     return tuple(targets)
+
+
+def parse_trusted_clients(raw: str) -> tuple[TrustedClient, ...]:
+    clients: list[TrustedClient] = []
+    for item in raw.split(";"):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        mac, rest = item.split("=", 1)
+        normalized_mac = normalize_mac(mac)
+        if not normalized_mac:
+            continue
+        parts = [part.strip() for part in rest.split(":")]
+        name = parts[0] if parts and parts[0] else normalized_mac
+        category = parts[1].lower() if len(parts) > 1 and parts[1] else "trusted"
+        clients.append(TrustedClient(normalized_mac, name, category))
+    return tuple(clients)
+
+
+def normalize_mac(raw: str) -> str:
+    compact = "".join(char for char in str(raw or "").lower() if char in "0123456789abcdef")
+    if len(compact) != 12:
+        return ""
+    return ":".join(compact[index:index + 2] for index in range(0, 12, 2))
 
 
 def parse_csv(raw: str) -> tuple[str, ...]:
