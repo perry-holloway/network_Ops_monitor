@@ -132,6 +132,27 @@
       color: var(--muted);
       text-align: center;
     }
+    .unifi-panel { padding: 18px; margin-bottom: 16px; }
+    .unifi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .insight-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.55);
+      padding: 14px;
+      min-height: 120px;
+    }
+    .insight-card h3 { margin: 0 0 10px; font-size: 14px; }
+    .insight-list { display: grid; gap: 9px; }
+    .insight-item { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(34,56,71,.55); padding-top: 9px; }
+    .insight-name { font-weight: 850; }
+    .insight-value { color: var(--cyan); font-weight: 900; white-space: nowrap; }
+    .notice {
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      color: var(--muted);
+      background: rgba(6,16,22,.35);
+    }
     .sections { grid-template-columns: 1.2fr .8fr; align-items: start; }
     .panel { padding: 18px; }
     .panel h2 { margin: 0 0 14px; font-size: 18px; }
@@ -186,6 +207,7 @@
     }
     @media (max-width: 900px) {
       .summary, .sections { grid-template-columns: 1fr; }
+      .unifi-grid { grid-template-columns: 1fr; }
       .network-map {
         grid-template-columns: 1fr;
         gap: 14px;
@@ -240,6 +262,18 @@
       <div id="networkDiagram" class="network-map"></div>
     </section>
 
+    <section class="card unifi-panel">
+      <div class="diagram-header">
+        <div>
+          <div class="eyebrow">UniFi API</div>
+          <h2>Devices, client activity, and traffic insights</h2>
+        </div>
+        <span id="unifiStatus" class="subtle">Waiting for API data...</span>
+      </div>
+      <div id="unifiNotice" class="notice">Enable the UniFi API collector in .env to populate this section.</div>
+      <div id="unifiGrid" class="unifi-grid"></div>
+    </section>
+
     <section class="grid sections">
       <div class="card panel">
         <div class="toolbar">
@@ -281,7 +315,7 @@
   </main>
 
   <script>
-    const state = { summary: null, selected: null, timer: null };
+    const state = { summary: null, unifi: null, selected: null, timer: null };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -292,8 +326,10 @@
 
     async function refresh() {
       state.summary = await api('/api/summary');
+      state.unifi = await api('/api/unifi');
       renderSummary();
       renderDiagram();
+      renderUnifi();
       renderTable();
       $('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
     }
@@ -377,6 +413,105 @@
       });
     }
 
+    function renderUnifi() {
+      const snapshot = state.unifi || {};
+      const notice = $('unifiNotice');
+      const grid = $('unifiGrid');
+      const status = $('unifiStatus');
+      grid.innerHTML = '';
+
+      if (!snapshot.api_enabled) {
+        status.textContent = 'Collector disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set UNIFI_API_ENABLED=true and UNIFI_API_KEY in local .env to pull UniFi API data.';
+        return;
+      }
+      if (!snapshot.api_configured) {
+        status.textContent = 'API key missing';
+        notice.style.display = 'block';
+        notice.textContent = 'UNIFI_API_ENABLED is on, but UNIFI_API_KEY is not configured.';
+        return;
+      }
+      if (!snapshot.ok) {
+        status.textContent = snapshot.checked_at ? `Failed ${formatDate(snapshot.checked_at)}` : 'Collection failed';
+        notice.style.display = 'block';
+        notice.textContent = snapshot.error || 'The UniFi API collector has not produced a successful snapshot yet.';
+      } else {
+        status.textContent = `Site ${snapshot.site_id || '-'} • ${formatDate(snapshot.checked_at)}`;
+        notice.style.display = 'none';
+      }
+
+      const insights = snapshot.traffic_insights || {};
+      const devices = snapshot.devices || [];
+      const clients = snapshot.clients || [];
+      grid.innerHTML = `
+        ${renderInsightCard('UniFi devices', [
+          ['Total', devices.length],
+          ['Online', devices.filter(device => String(device.state || '').toUpperCase() === 'ONLINE').length],
+          ['With stats', (snapshot.device_statistics || []).filter(item => !item.error).length],
+        ])}
+        ${renderInsightCard('Client activity', [
+          ['Connected clients', clients.length],
+          ['Downloaded', formatBytes(insights.total_client_rx_bytes || 0)],
+          ['Uploaded', formatBytes(insights.total_client_tx_bytes || 0)],
+        ])}
+        <div class="insight-card">
+          <h3>Top traffic clients</h3>
+          <div class="insight-list">
+            ${(insights.top_clients || []).slice(0, 5).map(client => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(client.name)}</span><br><span class="subtle">${escapeHtml(client.ip || client.mac || client.type)}</span></span>
+                <span class="insight-value">${formatBytes(client.total_bytes || 0)}</span>
+              </div>
+            `).join('') || '<span class="subtle">No client byte counters available yet.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Top device rates</h3>
+          <div class="insight-list">
+            ${(insights.top_devices || []).slice(0, 5).map(device => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(device.name)}</span><br><span class="subtle">${escapeHtml(device.ip || device.model || device.mac)}</span></span>
+                <span class="insight-value">${formatRate(device.total_rate_bps || 0)}</span>
+              </div>
+            `).join('') || '<span class="subtle">No device rate counters available yet.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Recently seen clients</h3>
+          <div class="insight-list">
+            ${clients.slice(0, 5).map(client => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(client.name || client.macAddress || client.id || 'Unknown client')}</span><br><span class="subtle">${escapeHtml(client.ipAddress || client.type || '')}</span></span>
+                <span class="pill ${client.connectedAt ? 'ok' : 'warn'}">${client.connectedAt ? 'active' : 'seen'}</span>
+              </div>
+            `).join('') || '<span class="subtle">No clients returned by the API.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Collector details</h3>
+          <div class="insight-list">
+            <div class="insight-item"><span class="subtle">Latency</span><span class="insight-value">${snapshot.latency_ms || 0} ms</span></div>
+            <div class="insight-item"><span class="subtle">Sites found</span><span class="insight-value">${(snapshot.sites || []).length}</span></div>
+            <div class="insight-item"><span class="subtle">Legacy stats</span><span class="insight-value">${snapshot.legacy_stats ? 'enabled' : 'off'}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInsightCard(title, rows) {
+      return `
+        <div class="insight-card">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="insight-list">
+            ${rows.map(([label, value]) => `
+              <div class="insight-item"><span class="subtle">${escapeHtml(label)}</span><span class="insight-value">${escapeHtml(value)}</span></div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     function findGateway(devices) {
       return devices.find(item => /udm|gateway|dream machine|router/i.test(`${item.name} ${item.target}`))
         || devices.find(item => item.target.endsWith('.1'))
@@ -442,6 +577,21 @@
     function formatDate(value) {
       if (!value) return '-';
       return new Date(value).toLocaleString();
+    }
+
+    function formatBytes(value) {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let amount = Number(value) || 0;
+      let unit = 0;
+      while (amount >= 1024 && unit < units.length - 1) {
+        amount /= 1024;
+        unit += 1;
+      }
+      return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`;
+    }
+
+    function formatRate(value) {
+      return `${formatBytes(value)}/s`;
     }
 
     function escapeHtml(value) {

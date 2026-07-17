@@ -10,6 +10,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Check ICMP reachability and optional TCP service ports
 - Track WAN targets such as public DNS providers
 - Test DNS lookups and external HTTP endpoints
+- Pull UniFi devices, connected clients, and traffic insights from the UniFi Network API
 - Persist check history in SQLite
 - Provide a local dashboard and JSON API
 - Run beside the existing threat monitor on port `8090`
@@ -64,11 +65,42 @@ DNS_LOOKUPS=ui.com;github.com
 HTTP_CHECKS=https://ui.com=UniFi Website;https://github.com=GitHub
 ```
 
+### UniFi Network API collector
+
+The UniFi API collector is optional and disabled by default. It can pull:
+
+- adopted UniFi devices
+- connected clients / client activity
+- latest device statistics
+- traffic insight summaries such as top clients and top device rates
+
+Add these settings to your local `.env`:
+
+```env
+UNIFI_API_ENABLED=true
+UNIFI_API_BASE_URL=https://192.168.1.1/proxy/network/integration
+UNIFI_API_KEY=replace-with-your-read-only-api-key
+UNIFI_SITE_ID=
+UNIFI_VERIFY_TLS=false
+UNIFI_TIMEOUT_SECONDS=10
+UNIFI_LEGACY_STATS_ENABLED=true
+```
+
+Notes:
+
+- Keep `UNIFI_API_KEY` only in `.env`; never commit it.
+- Leave `UNIFI_SITE_ID` blank to use the first site returned by the API.
+- Set `UNIFI_VERIFY_TLS=false` for the default self-signed UDM certificate.
+- `UNIFI_LEGACY_STATS_ENABLED=true` attempts older local stats endpoints for richer traffic counters. If your console rejects those endpoints, the dashboard will still use the official API data it can collect.
+
+UniFi documents local Network API access under UniFi Network > Integrations. The official API includes local endpoints for sites, adopted devices, connected clients, and latest device statistics.
+
 ## API
 
 ```text
 GET /api/summary
 GET /api/history?target=192.168.1.1&limit=50
+GET /api/unifi
 GET /health
 ```
 
@@ -86,4 +118,3 @@ python -m ubiquiti_ops
 - Daily summary of new, missing, and unstable devices
 - Maintenance window support
 - Exportable CSV reports
-

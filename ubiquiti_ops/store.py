@@ -50,6 +50,22 @@ class Store:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_checks_target_time ON checks(target, checked_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_checks_kind_time ON checks(kind, checked_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS unifi_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    checked_at TEXT NOT NULL,
+                    ok INTEGER NOT NULL,
+                    site_id TEXT NOT NULL,
+                    device_count INTEGER NOT NULL,
+                    client_count INTEGER NOT NULL,
+                    latency_ms INTEGER NOT NULL,
+                    error TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_unifi_snapshots_time ON unifi_snapshots(checked_at DESC)")
 
     def add_result(self, result: dict) -> None:
         with self._lock, self._connection() as conn:
@@ -118,6 +134,63 @@ class Store:
             "latest": latest,
             "critical_down": critical_down,
         }
+
+    def add_unifi_snapshot(self, snapshot: dict) -> None:
+        insights = snapshot.get("traffic_insights", {})
+        with self._lock, self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO unifi_snapshots
+                    (checked_at, ok, site_id, device_count, client_count, latency_ms, error, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.get("checked_at", ""),
+                    1 if snapshot.get("ok") else 0,
+                    snapshot.get("site_id", ""),
+                    len(snapshot.get("devices", [])) or int(insights.get("device_count") or 0),
+                    len(snapshot.get("clients", [])) or int(insights.get("client_count") or 0),
+                    int(snapshot.get("latency_ms") or 0),
+                    snapshot.get("error", ""),
+                    json.dumps(snapshot, sort_keys=True),
+                ),
+            )
+
+    def latest_unifi_snapshot(self) -> dict:
+        with self._lock, self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM unifi_snapshots
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if not row:
+            return {
+                "configured": False,
+                "ok": False,
+                "checked_at": "",
+                "site_id": "",
+                "devices": [],
+                "clients": [],
+                "device_statistics": [],
+                "traffic_insights": {
+                    "client_count": 0,
+                    "device_count": 0,
+                    "total_client_rx_bytes": 0,
+                    "total_client_tx_bytes": 0,
+                    "top_clients": [],
+                    "top_devices": [],
+                },
+                "error": "No UniFi API snapshot has been collected yet.",
+            }
+        try:
+            payload = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            payload = {}
+        payload["configured"] = True
+        return payload
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:

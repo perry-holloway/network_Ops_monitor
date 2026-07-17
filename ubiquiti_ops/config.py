@@ -29,6 +29,13 @@ class Config:
     wan_targets: tuple[NamedTarget, ...]
     dns_lookups: tuple[str, ...]
     http_checks: tuple[NamedTarget, ...]
+    unifi_api_enabled: bool
+    unifi_api_base_url: str
+    unifi_api_key: str
+    unifi_site_id: str
+    unifi_verify_tls: bool
+    unifi_timeout_seconds: int
+    unifi_legacy_stats_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -42,6 +49,13 @@ class Config:
             wan_targets=parse_named_targets(os.getenv("WAN_TARGETS", "1.1.1.1=Cloudflare DNS;8.8.8.8=Google DNS")),
             dns_lookups=tuple(item.strip() for item in os.getenv("DNS_LOOKUPS", "ui.com;github.com").split(";") if item.strip()),
             http_checks=parse_named_targets(os.getenv("HTTP_CHECKS", "https://ui.com=UniFi Website;https://github.com=GitHub")),
+            unifi_api_enabled=_bool("UNIFI_API_ENABLED", False),
+            unifi_api_base_url=os.getenv("UNIFI_API_BASE_URL", "https://192.168.1.1/proxy/network/integration").rstrip("/"),
+            unifi_api_key=os.getenv("UNIFI_API_KEY", "").strip(),
+            unifi_site_id=os.getenv("UNIFI_SITE_ID", "").strip(),
+            unifi_verify_tls=_bool("UNIFI_VERIFY_TLS", False),
+            unifi_timeout_seconds=max(3, _int("UNIFI_TIMEOUT_SECONDS", 10)),
+            unifi_legacy_stats_enabled=_bool("UNIFI_LEGACY_STATS_ENABLED", True),
         )
 
 
@@ -95,3 +109,9 @@ def _int(name: str, default: int) -> int:
     except ValueError:
         return default
 
+
+def _bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
