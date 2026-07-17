@@ -248,6 +248,34 @@
       border-radius: inherit;
     }
     .bar-fill.warn { background: linear-gradient(90deg, var(--amber), #ff8a5b); }
+    .trend-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .trend-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.5);
+      padding: 14px;
+      min-height: 172px;
+      display: grid;
+      gap: 10px;
+    }
+    .trend-card h3 { margin: 0; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .trend-value { font-size: 22px; font-weight: 900; }
+    .trend-delta { font-size: 13px; color: var(--muted); font-weight: 800; }
+    .trend-delta.up { color: var(--amber); }
+    .trend-delta.down { color: var(--green); }
+    .sparkline { width: 100%; height: 58px; overflow: visible; }
+    .sparkline .line { fill: none; stroke: var(--cyan); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .sparkline .fill { fill: rgba(67,217,239,.08); }
+    .sparkline .dot { fill: var(--cyan); filter: drop-shadow(0 0 6px rgba(67,217,239,.75)); }
+    .trend-alerts { display: grid; gap: 10px; margin-top: 14px; }
+    .trend-alert {
+      border: 1px solid rgba(247,183,49,.45);
+      background: rgba(247,183,49,.08);
+      border-radius: 14px;
+      padding: 12px;
+      color: #ffe4a3;
+      font-weight: 800;
+    }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
     .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -291,13 +319,14 @@
     .panel { padding: 18px; }
     .panel h2 { margin: 0 0 14px; font-size: 18px; }
     .toolbar { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; align-items: center; }
-    select, input {
+    select, input, textarea {
       border: 1px solid var(--line);
       border-radius: 12px;
       background: #08141b;
       color: var(--text);
       padding: 10px 12px;
     }
+    textarea { resize: vertical; min-height: 86px; font-family: inherit; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 13px 10px; border-bottom: 1px solid rgba(34,56,71,.7); vertical-align: top; }
     th { color: var(--muted); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
@@ -362,6 +391,20 @@
     }
     .detail-tile .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
     .detail-tile .value { margin-top: 6px; font-weight: 950; word-break: break-word; }
+    .entity-form {
+      border: 1px solid rgba(67,217,239,.22);
+      border-radius: 16px;
+      background: rgba(67,217,239,.05);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .entity-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .entity-field { display: grid; gap: 6px; }
+    .entity-field label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+    .entity-field input, .entity-field select, .entity-field textarea { width: 100%; }
+    .entity-field.full { grid-column: 1 / -1; }
+    .form-status { color: var(--muted); font-weight: 800; min-height: 18px; }
     pre {
       white-space: pre-wrap;
       overflow: auto;
@@ -385,7 +428,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -557,6 +600,23 @@
         <div id="unifiGrid" class="unifi-grid"></div>
         <div id="unifiUtilization" class="utilization-grid"></div>
       </section>
+      <section class="card unifi-panel">
+        <div class="toolbar">
+          <div>
+            <h2>Utilization history</h2>
+            <p class="subtle">Trend snapshots from stored UniFi API pulls, useful for spotting traffic jumps and device changes.</p>
+          </div>
+          <select id="trendWindow" aria-label="History window">
+            <option value="15">Last 15 snapshots</option>
+            <option value="60">Last 60 snapshots</option>
+            <option value="144" selected>Last 144 snapshots</option>
+            <option value="500">Last 500 snapshots</option>
+          </select>
+        </div>
+        <div id="trendNotice" class="notice">Waiting for UniFi history...</div>
+        <div id="trendGrid" class="trend-grid"></div>
+        <div id="trendAlerts" class="trend-alerts"></div>
+      </section>
     </section>
 
     <section id="page-clients" class="page" data-page="clients">
@@ -725,7 +785,7 @@
 
   <script>
     const pages = ['summary', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, discovery: null, speed: null, selected: null, timer: null, page: 'summary' };
+    const state = { summary: null, unifi: null, unifiHistory: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -734,15 +794,28 @@
       return response.json();
     }
 
+    async function postJson(path, payload) {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok || body.ok === false) throw new Error(body.error || `HTTP ${response.status}`);
+      return body;
+    }
+
     async function refresh() {
       state.summary = await api('/api/summary');
       state.unifi = await api('/api/unifi');
+      state.unifiHistory = await api(`/api/unifi/history?limit=${$('trendWindow')?.value || 144}`);
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
       renderSummary();
       renderSpeedTest();
       renderDiagram();
       renderUnifi();
+      renderUnifiHistory();
       renderClients();
       renderDiscovery();
       renderTable();
@@ -1035,6 +1108,102 @@
       attachEntityDetailHandlers(utilization);
     }
 
+    function renderUnifiHistory() {
+      const history = state.unifiHistory || {};
+      const points = history.points || [];
+      const trends = history.trends || {};
+      const notice = $('trendNotice');
+      const grid = $('trendGrid');
+      const alerts = $('trendAlerts');
+      grid.innerHTML = '';
+      alerts.innerHTML = '';
+
+      if (!points.length) {
+        notice.style.display = 'block';
+        notice.textContent = 'No UniFi history has been stored yet. Let the collector run for a few intervals to build trend lines.';
+        return;
+      }
+
+      notice.style.display = 'none';
+      const latest = trends.latest || points[points.length - 1] || {};
+      grid.innerHTML = `
+        ${renderTrendCard(
+          'Client traffic',
+          formatBytes(latest.total_client_bytes || 0),
+          formatDeltaBytes(trends.traffic_delta_bytes || 0),
+          points,
+          'total_client_bytes'
+        )}
+        ${renderTrendCard(
+          'Device throughput',
+          formatRate(latest.total_device_rate_bps || 0),
+          formatDeltaRate(trends.device_rate_delta_bps || 0),
+          points,
+          'total_device_rate_bps'
+        )}
+        ${renderTrendCard(
+          'Connected clients',
+          latest.client_count || 0,
+          formatSignedNumber(trends.client_count_delta || 0),
+          points,
+          'client_count'
+        )}
+        ${renderTrendCard(
+          'Offline devices',
+          latest.offline_device_count || 0,
+          formatSignedNumber(trends.offline_device_delta || 0),
+          points,
+          'offline_device_count',
+          true
+        )}
+      `;
+
+      const trendAlerts = trends.alerts || [];
+      alerts.innerHTML = trendAlerts.length
+        ? trendAlerts.map(alert => `<div class="trend-alert">${escapeHtml(alert.message)}</div>`).join('')
+        : '<div class="notice">No trend alerts in the selected snapshot window.</div>';
+    }
+
+    function renderTrendCard(title, value, delta, points, key, invertDelta = false) {
+      const rawDelta = numericDelta(delta);
+      const deltaClass = rawDelta === 0 ? '' : ((rawDelta > 0) !== invertDelta ? 'up' : 'down');
+      return `
+        <div class="trend-card">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="trend-value">${escapeHtml(value)}</div>
+          <div class="trend-delta ${deltaClass}">${escapeHtml(delta)} vs previous snapshot</div>
+          ${renderSparkline(points, key)}
+          <span class="subtle">${formatDate(points[0]?.checked_at)} to ${formatDate(points[points.length - 1]?.checked_at)}</span>
+        </div>
+      `;
+    }
+
+    function renderSparkline(points, key) {
+      const values = points.map(point => Number(point[key]) || 0);
+      if (values.length < 2) return '<span class="subtle">More snapshots needed for a chart.</span>';
+      const width = 240;
+      const height = 58;
+      const padding = 4;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = Math.max(max - min, 1);
+      const coords = values.map((value, index) => {
+        const x = values.length === 1 ? width / 2 : (index / (values.length - 1)) * width;
+        const y = height - padding - (((value - min) / range) * (height - (padding * 2)));
+        return [x, y];
+      });
+      const line = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+      const fill = `0,${height} ${line} ${width},${height}`;
+      const [lastX, lastY] = coords[coords.length - 1];
+      return `
+        <svg class="sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttr(key)} trend">
+          <polygon class="fill" points="${fill}"></polygon>
+          <polyline class="line" points="${line}"></polyline>
+          <circle class="dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="3.5"></circle>
+        </svg>
+      `;
+    }
+
     function renderClients() {
       const snapshot = state.unifi || {};
       const notice = $('clientNotice');
@@ -1230,6 +1399,8 @@
 
     function openDeviceDetail(device) {
       openEntityDetail({
+        kind: 'device',
+        entityId: entityKey(device),
         type: 'Device details',
         title: deviceName(device),
         subtitle: `${deviceModel(device) || 'UniFi device'} • ${device.ipAddress || device.ip || 'No IP'} • ${device.macAddress || device.mac || 'No MAC'}`,
@@ -1243,6 +1414,13 @@
             ['MAC address', device.macAddress || device.mac || '-'],
             ['Firmware', device.firmwareVersion || device.version || '-'],
             ['State', deviceStatus(device) || device.state || '-'],
+          ]],
+          ['Local management', [
+            ['Owner', device.owner || '-'],
+            ['Location', device.location || '-'],
+            ['Category', device.category || '-'],
+            ['Notes', device.notes || '-'],
+            ['Last updated', device.localOverride?.updated_at ? formatDate(device.localOverride.updated_at) : '-'],
           ]],
           ['Utilization', [
             ['Throughput', formatRate(device.total_rate_bps || 0)],
@@ -1268,6 +1446,8 @@
     function openClientDetail(client) {
       const trusted = isTrustedClient(client);
       openEntityDetail({
+        kind: 'client',
+        entityId: entityKey(client),
         type: 'Client details',
         title: clientName(client),
         subtitle: `${client.ipAddress || client.ip || 'No IP'} • ${client.macAddress || client.mac || 'No MAC'} • ${clientType(client)}`,
@@ -1289,6 +1469,10 @@
             ['Needs naming', isUnnamedClient(client) ? 'Yes' : 'No'],
             ['Connected', formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')],
             ['Normalized MAC', client.normalizedMac || '-'],
+            ['Owner', client.owner || '-'],
+            ['Location', client.location || '-'],
+            ['Notes', client.notes || '-'],
+            ['Last updated', client.localOverride?.updated_at ? formatDate(client.localOverride.updated_at) : '-'],
           ]],
           ['Traffic', [
             ['Total traffic', formatBytes(clientTotalBytes(client))],
@@ -1303,12 +1487,14 @@
       });
     }
 
-    function openEntityDetail({ type, title, subtitle, statusClass, status, sections, raw }) {
+    function openEntityDetail({ kind, entityId, type, title, subtitle, statusClass, status, sections, raw }) {
+      state.selectedEntity = { kind, entityId, raw: raw || {} };
       $('entityDetailType').textContent = type;
       $('entityDetailTitle').textContent = title || 'Unknown';
       $('entityDetailSubtitle').textContent = subtitle || '';
       $('entityDetailBody').innerHTML = `
         <div><span class="pill ${statusClass || 'warn'}">${escapeHtml(status || 'unknown')}</span></div>
+        ${renderEntityUpdateForm(kind, entityId, raw || {})}
         ${sections.map(([heading, rows]) => `
           <div class="entity-section">
             <h3>${escapeHtml(heading)}</h3>
@@ -1329,11 +1515,87 @@
       `;
       $('entityDetailOverlay').classList.add('active');
       $('entityDetailOverlay').setAttribute('aria-hidden', 'false');
+      $('entityUpdateForm')?.addEventListener('submit', saveEntityUpdate);
     }
 
     function closeEntityDetail() {
       $('entityDetailOverlay').classList.remove('active');
       $('entityDetailOverlay').setAttribute('aria-hidden', 'true');
+      state.selectedEntity = null;
+    }
+
+    function renderEntityUpdateForm(kind, entityId, entity) {
+      const override = entity.localOverride || {};
+      const trusted = override.trusted === true || entity.trusted === true || String(entity.trusted || '').toLowerCase() === 'true';
+      const trustedValue = kind === 'client' && override.trusted !== undefined && override.trusted !== ''
+        ? String(override.trusted)
+        : '';
+      return `
+        <form id="entityUpdateForm" class="entity-section entity-form">
+          <div class="toolbar">
+            <div>
+              <h3>Update local inventory</h3>
+              <p class="subtle">Stored locally in this dashboard. This does not change UniFi controller settings.</p>
+            </div>
+            <button type="submit">Save update</button>
+          </div>
+          <input type="hidden" name="kind" value="${escapeAttr(kind)}">
+          <input type="hidden" name="entity_id" value="${escapeAttr(entityId)}">
+          <div class="entity-form-grid">
+            <div class="entity-field">
+              <label for="entityDisplayName">Display name</label>
+              <input id="entityDisplayName" name="display_name" value="${escapeAttr(override.display_name || entity.localDisplayName || '')}" placeholder="Friendly name">
+            </div>
+            <div class="entity-field">
+              <label for="entityCategory">Category</label>
+              <input id="entityCategory" name="category" value="${escapeAttr(override.category || entity.category || entity.trustedCategory || '')}" placeholder="NAS, Camera, Workstation...">
+            </div>
+            <div class="entity-field">
+              <label for="entityOwner">Owner</label>
+              <input id="entityOwner" name="owner" value="${escapeAttr(override.owner || entity.owner || '')}" placeholder="Person or team">
+            </div>
+            <div class="entity-field">
+              <label for="entityLocation">Location</label>
+              <input id="entityLocation" name="location" value="${escapeAttr(override.location || entity.location || '')}" placeholder="Office, rack, living room...">
+            </div>
+            ${kind === 'client' ? `
+              <div class="entity-field">
+                <label for="entityTrusted">Trust status</label>
+                <select id="entityTrusted" name="trusted">
+                  <option value="" ${trustedValue === '' ? 'selected' : ''}>Keep discovered value</option>
+                  <option value="true" ${trustedValue === 'true' ? 'selected' : ''}>Trusted</option>
+                  <option value="false" ${trustedValue === 'false' ? 'selected' : ''}>Untrusted / review</option>
+                </select>
+              </div>
+            ` : ''}
+            <div class="entity-field full">
+              <label for="entityNotes">Notes</label>
+              <textarea id="entityNotes" name="notes" placeholder="What should future-you know about this item?">${escapeHtml(override.notes || entity.notes || '')}</textarea>
+            </div>
+          </div>
+          <div id="entityFormStatus" class="form-status"></div>
+        </form>
+      `;
+    }
+
+    async function saveEntityUpdate(event) {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const status = $('entityFormStatus');
+      const submit = form.querySelector('button[type="submit"]');
+      const data = Object.fromEntries(new FormData(form).entries());
+      status.textContent = 'Saving...';
+      submit.disabled = true;
+      try {
+        await postJson('/api/entities/update', data);
+        status.textContent = 'Saved. Refreshing inventory...';
+        await refresh();
+        if (findEntity(data.kind, data.entity_id)) openEntityDetailFromId(data.kind, data.entity_id);
+      } catch (error) {
+        status.textContent = `Save failed: ${error.message}`;
+      } finally {
+        submit.disabled = false;
+      }
     }
 
     function entityKey(item) {
@@ -1353,8 +1615,13 @@
         if (!query) return true;
         return [
           clientName(client),
+          client.localDisplayName,
           client.trustedCategory,
           client.trustedName,
+          client.owner,
+          client.location,
+          client.category,
+          client.notes,
           client.ipAddress,
           client.ip,
           client.macAddress,
@@ -1367,11 +1634,11 @@
     }
 
     function clientName(client) {
-      return client.trustedName || client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
+      return client.localDisplayName || client.trustedName || client.name || client.hostname || client.displayName || client.macAddress || client.mac || client.id || 'Unknown client';
     }
 
     function isUnnamedClient(client) {
-      const name = String(client.trustedName || client.name || client.hostname || client.displayName || '').trim();
+      const name = String(client.localDisplayName || client.trustedName || client.name || client.hostname || client.displayName || '').trim();
       return !name || /^unknown/i.test(name) || name === String(client.macAddress || client.mac || '').trim();
     }
 
@@ -1498,7 +1765,7 @@
     }
 
     function deviceName(device) {
-      return device.name || device.displayName || device.model || device.id || 'Unknown device';
+      return device.localDisplayName || device.name || device.displayName || device.model || device.id || 'Unknown device';
     }
 
     function deviceModel(device) {
@@ -1594,17 +1861,37 @@
 
     function formatBytes(value) {
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      let amount = Number(value) || 0;
+      const raw = Number(value) || 0;
+      const sign = raw < 0 ? '-' : '';
+      let amount = Math.abs(raw);
       let unit = 0;
       while (amount >= 1024 && unit < units.length - 1) {
         amount /= 1024;
         unit += 1;
       }
-      return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`;
+      return `${sign}${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`;
     }
 
     function formatRate(value) {
       return `${formatBytes(value)}/s`;
+    }
+
+    function formatDeltaBytes(value) {
+      return `${Number(value) > 0 ? '+' : ''}${formatBytes(value)}`;
+    }
+
+    function formatDeltaRate(value) {
+      return `${Number(value) > 0 ? '+' : ''}${formatRate(value)}`;
+    }
+
+    function formatSignedNumber(value) {
+      const amount = Number(value) || 0;
+      const sign = amount > 0 ? '+' : '';
+      return `${sign}${amount.toLocaleString()}`;
+    }
+
+    function numericDelta(value) {
+      return Number(String(value).replace(/[^0-9.-]/g, '')) || 0;
     }
 
     function formatPercent(value) {
@@ -1627,6 +1914,9 @@
     $('clientSearch').addEventListener('input', renderClients);
     $('clientTypeFilter').addEventListener('change', renderClients);
     $('clientIdentityFilter').addEventListener('change', renderClients);
+    $('trendWindow').addEventListener('change', () => refresh().catch(error => {
+      $('lastRefresh').textContent = `Load failed: ${error.message}`;
+    }));
     $('closeEntityDetail').addEventListener('click', closeEntityDetail);
     $('entityDetailOverlay').addEventListener('click', event => {
       if (event.target === $('entityDetailOverlay')) closeEntityDetail();
