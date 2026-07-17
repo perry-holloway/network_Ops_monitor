@@ -28,6 +28,15 @@ class OpsHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/summary":
             self._json(self.store.summary())
             return
+        if parsed.path == "/api/unifi":
+            snapshot = self.store.latest_unifi_snapshot()
+            snapshot["api_enabled"] = self.config.unifi_api_enabled
+            snapshot["api_configured"] = bool(
+                self.config.unifi_api_enabled
+                and (self.config.unifi_api_key or self.config.unifi_site_manager_api_key)
+            )
+            self._json(snapshot)
+            return
         if parsed.path == "/api/history":
             query = parse_qs(parsed.query)
             target = query.get("target", [""])[0]
@@ -66,4 +75,3 @@ def _int(raw: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
-

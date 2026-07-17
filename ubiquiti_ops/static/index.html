@@ -36,6 +36,65 @@
     .eyebrow { color: var(--cyan); font-weight: 800; letter-spacing: .18em; font-size: 12px; text-transform: uppercase; }
     .subtle { color: var(--muted); }
     main { padding: 0 clamp(18px, 4vw, 42px) 42px; }
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 0 clamp(18px, 4vw, 42px) 18px;
+      background: linear-gradient(180deg, rgba(7,16,22,.98), rgba(7,16,22,.86) 70%, transparent);
+      backdrop-filter: blur(10px);
+    }
+    .top-nav a,
+    .page-link {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(13,26,34,.82);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 900;
+      padding: 10px 14px;
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      transition: border-color .15s ease, transform .15s ease, background .15s ease;
+    }
+    .top-nav a:hover,
+    .top-nav a.active,
+    .page-link:hover {
+      border-color: rgba(67,217,239,.72);
+      background: rgba(67,217,239,.1);
+      transform: translateY(-1px);
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+    .page-hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin: 8px 0 18px;
+    }
+    .page-hero h2 {
+      margin: 4px 0 6px;
+      font-size: clamp(24px, 4vw, 38px);
+      letter-spacing: -0.04em;
+    }
+    .quick-links {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 16px;
+    }
+    .nav-card {
+      padding: 20px;
+      min-height: 150px;
+      display: grid;
+      gap: 10px;
+      align-content: space-between;
+    }
+    .nav-card h3 { margin: 0; font-size: 19px; }
+    .nav-card p { margin: 0; line-height: 1.45; }
     .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     button {
       border: 1px solid var(--line);
@@ -132,6 +191,27 @@
       color: var(--muted);
       text-align: center;
     }
+    .unifi-panel { padding: 18px; margin-bottom: 16px; }
+    .unifi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .insight-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.55);
+      padding: 14px;
+      min-height: 120px;
+    }
+    .insight-card h3 { margin: 0 0 10px; font-size: 14px; }
+    .insight-list { display: grid; gap: 9px; }
+    .insight-item { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(34,56,71,.55); padding-top: 9px; }
+    .insight-name { font-weight: 850; }
+    .insight-value { color: var(--cyan); font-weight: 900; white-space: nowrap; }
+    .notice {
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      color: var(--muted);
+      background: rgba(6,16,22,.35);
+    }
     .sections { grid-template-columns: 1.2fr .8fr; align-items: start; }
     .panel { padding: 18px; }
     .panel h2 { margin: 0 0 14px; font-size: 18px; }
@@ -185,7 +265,8 @@
       background: rgba(6,16,22,.55);
     }
     @media (max-width: 900px) {
-      .summary, .sections { grid-template-columns: 1fr; }
+      .summary, .sections, .quick-links { grid-template-columns: 1fr; }
+      .unifi-grid { grid-template-columns: 1fr; }
       .network-map {
         grid-template-columns: 1fr;
         gap: 14px;
@@ -204,6 +285,7 @@
       .connector::before { top: 0; }
       .connector::after { top: 100%; }
       header { align-items: flex-start; flex-direction: column; }
+      .page-hero { align-items: flex-start; flex-direction: column; }
       .history-item { grid-template-columns: 1fr; }
     }
   </style>
@@ -221,67 +303,143 @@
     </div>
   </header>
 
+  <nav class="top-nav" aria-label="Dashboard pages">
+    <a href="#summary" data-page-link="summary">Summary</a>
+    <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
+    <a href="#network-map" data-page-link="network-map">Network Map</a>
+    <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
+  </nav>
+
   <main>
-    <section class="grid summary">
-      <div class="card metric"><div class="label">Checks</div><div id="totalChecks" class="value">-</div></div>
-      <div class="card metric"><div class="label">Healthy</div><div id="healthyChecks" class="value">-</div></div>
-      <div class="card metric"><div class="label">Down</div><div id="downChecks" class="value">-</div></div>
-      <div class="card metric"><div class="label">Critical Down</div><div id="criticalDown" class="value">-</div></div>
+    <section id="page-summary" class="page" data-page="summary">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Summary</div>
+          <h2>Operations overview</h2>
+          <p class="subtle">A quick read on network health, collection status, and where to investigate next.</p>
+        </div>
+      </div>
+      <section class="grid summary">
+        <div class="card metric"><div class="label">Checks</div><div id="totalChecks" class="value">-</div></div>
+        <div class="card metric"><div class="label">Healthy</div><div id="healthyChecks" class="value">-</div></div>
+        <div class="card metric"><div class="label">Down</div><div id="downChecks" class="value">-</div></div>
+        <div class="card metric"><div class="label">Critical Down</div><div id="criticalDown" class="value">-</div></div>
+      </section>
+      <section class="grid quick-links">
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Collection</div>
+            <h3>Collection health</h3>
+            <p class="subtle">Review each local check, filter failures, and inspect per-target history.</p>
+          </div>
+          <a class="page-link" href="#collection-health">Open health page</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Topology</div>
+            <h3>Network map</h3>
+            <p class="subtle">See WAN, gateway, and watched devices as a live status diagram.</p>
+          </div>
+          <a class="page-link" href="#network-map">Open map page</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">UniFi</div>
+            <h3>API insights</h3>
+            <p class="subtle">View UniFi devices, client activity, traffic counters, and collector state.</p>
+          </div>
+          <a class="page-link" href="#unifi">Open UniFi page</a>
+        </div>
+      </section>
     </section>
 
-    <section class="card diagram-panel">
-      <div class="diagram-header">
+    <section id="page-network-map" class="page" data-page="network-map">
+      <div class="page-hero">
         <div>
           <div class="eyebrow">Live topology</div>
-          <h2>Network diagram</h2>
+          <h2>Network map</h2>
+          <p class="subtle">WAN, gateway, and watched devices laid out as a clickable health diagram.</p>
         </div>
-        <span class="subtle">Click any node to inspect history</span>
       </div>
-      <div id="networkDiagram" class="network-map"></div>
+      <section class="card diagram-panel">
+        <div class="diagram-header">
+          <div>
+            <div class="eyebrow">Topology</div>
+            <h2>Network diagram</h2>
+          </div>
+          <span class="subtle">Click any node to inspect history</span>
+        </div>
+        <div id="networkDiagram" class="network-map"></div>
+      </section>
     </section>
 
-    <section class="grid sections">
-      <div class="card panel">
-        <div class="toolbar">
-          <h2>Current checks</h2>
-          <div class="actions">
-            <select id="kindFilter" aria-label="Kind filter">
-              <option value="all">All checks</option>
-              <option value="device">Devices</option>
-              <option value="wan">WAN</option>
-              <option value="dns">DNS</option>
-              <option value="http">HTTP</option>
-            </select>
-            <select id="statusFilter" aria-label="Status filter">
-              <option value="all">All statuses</option>
-              <option value="down">Problems only</option>
-              <option value="ok">Healthy only</option>
-            </select>
-          </div>
+    <section id="page-unifi" class="page" data-page="unifi">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">UniFi API</div>
+          <h2>Devices, client activity, and traffic insights</h2>
+          <p class="subtle">A dedicated page for UniFi API collection status, connected clients, and usage trends.</p>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Kind</th>
-              <th>Status</th>
-              <th>Latency</th>
-              <th>Checked</th>
-            </tr>
-          </thead>
-          <tbody id="checksBody"></tbody>
-        </table>
+        <span id="unifiStatus" class="subtle">Waiting for API data...</span>
       </div>
+      <section class="card unifi-panel">
+        <div id="unifiNotice" class="notice">Enable the UniFi API collector in .env to populate this section.</div>
+        <div id="unifiGrid" class="unifi-grid"></div>
+      </section>
+    </section>
 
-      <aside class="card panel">
-        <h2>Selected check</h2>
-        <div id="detail" class="detail subtle">Click a check to view details and history.</div>
-      </aside>
+    <section id="page-collection-health" class="page" data-page="collection-health">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Collection health</div>
+          <h2>Check results and history</h2>
+          <p class="subtle">Inspect WAN, DNS, HTTP, and watched-device checks with filters and per-target history.</p>
+        </div>
+      </div>
+      <section class="grid sections">
+        <div class="card panel">
+          <div class="toolbar">
+            <h2>Current checks</h2>
+            <div class="actions">
+              <select id="kindFilter" aria-label="Kind filter">
+                <option value="all">All checks</option>
+                <option value="device">Devices</option>
+                <option value="wan">WAN</option>
+                <option value="dns">DNS</option>
+                <option value="http">HTTP</option>
+              </select>
+              <select id="statusFilter" aria-label="Status filter">
+                <option value="all">All statuses</option>
+                <option value="down">Problems only</option>
+                <option value="ok">Healthy only</option>
+              </select>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Kind</th>
+                <th>Status</th>
+                <th>Latency</th>
+                <th>Checked</th>
+              </tr>
+            </thead>
+            <tbody id="checksBody"></tbody>
+          </table>
+        </div>
+
+        <aside class="card panel">
+          <h2>Selected check</h2>
+          <div id="detail" class="detail subtle">Click a check to view details and history.</div>
+        </aside>
+      </section>
     </section>
   </main>
 
   <script>
-    const state = { summary: null, selected: null, timer: null };
+    const pages = ['summary', 'collection-health', 'network-map', 'unifi'];
+    const state = { summary: null, unifi: null, selected: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -292,10 +450,30 @@
 
     async function refresh() {
       state.summary = await api('/api/summary');
+      state.unifi = await api('/api/unifi');
       renderSummary();
       renderDiagram();
+      renderUnifi();
       renderTable();
       $('lastRefresh').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+
+    function currentPageFromHash() {
+      const hash = window.location.hash.replace('#', '');
+      return pages.includes(hash) ? hash : 'summary';
+    }
+
+    function renderPage() {
+      state.page = currentPageFromHash();
+      document.querySelectorAll('[data-page]').forEach(section => {
+        section.classList.toggle('active', section.dataset.page === state.page);
+      });
+      document.querySelectorAll('[data-page-link]').forEach(link => {
+        link.classList.toggle('active', link.dataset.pageLink === state.page);
+      });
+      if (!window.location.hash) {
+        history.replaceState(null, '', '#summary');
+      }
     }
 
     function renderSummary() {
@@ -377,6 +555,149 @@
       });
     }
 
+    function renderUnifi() {
+      const snapshot = state.unifi || {};
+      const notice = $('unifiNotice');
+      const grid = $('unifiGrid');
+      const status = $('unifiStatus');
+      grid.innerHTML = '';
+
+      if (!snapshot.api_enabled) {
+        status.textContent = 'Collector disabled';
+        notice.style.display = 'block';
+        notice.textContent = 'Set UNIFI_API_ENABLED=true and configure a Site Manager or local Network API key in local .env.';
+        return;
+      }
+      if (!snapshot.api_configured) {
+        status.textContent = 'API key missing';
+        notice.style.display = 'block';
+        notice.textContent = 'UNIFI_API_ENABLED is on, but no Site Manager or local Network API key is configured.';
+        return;
+      }
+      if (!snapshot.ok) {
+        status.textContent = snapshot.checked_at ? `Failed ${formatDate(snapshot.checked_at)}` : 'Collection failed';
+        notice.style.display = 'block';
+        notice.textContent = snapshot.error || 'The UniFi API collector has not produced a successful snapshot yet.';
+      } else {
+        status.textContent = `Site ${snapshot.site_id || '-'} • ${formatDate(snapshot.checked_at)}`;
+        if (snapshot.network_error) {
+          notice.style.display = 'block';
+          notice.textContent = `Site Manager data is live. Local Network API is optional and currently unavailable: ${snapshot.network_error}`;
+        } else {
+          notice.style.display = 'none';
+        }
+      }
+
+      const devices = snapshot.devices || [];
+      const clients = snapshot.clients || [];
+      const siteManagerSites = snapshot.site_manager_sites || [];
+      const siteManagerHosts = snapshot.site_manager_hosts || [];
+      const siteManagerDevices = snapshot.site_manager_devices || [];
+      const siteManagerIspMetrics = snapshot.site_manager_isp_metrics || [];
+      const siteManagerErrors = snapshot.site_manager_errors || {};
+      const activeSites = siteManagerSites.filter(site => String(site.permission || '').length || site.isOwner).length;
+      const onlineDevices = siteManagerDevices.filter(isOnlineDevice).length;
+      grid.innerHTML = `
+        ${renderInsightCard('Site Manager coverage', [
+          ['Sites', siteManagerSites.length],
+          ['Hosts', siteManagerHosts.length],
+          ['Infrastructure devices', siteManagerDevices.length],
+          ['ISP metric records', siteManagerIspMetrics.length],
+        ])}
+        ${renderInsightCard('Local Network API', [
+          ['Status', snapshot.network_error ? 'Unavailable' : 'Connected'],
+          ['Local site', snapshot.site_id || '-'],
+          ['Local devices', devices.length],
+          ['Connected clients', clients.length],
+        ])}
+        ${renderInsightCard('Account health', [
+          ['Accessible sites', activeSites],
+          ['Online devices', onlineDevices],
+          ['Offline devices', Math.max(siteManagerDevices.length - onlineDevices, 0)],
+          ['Site Manager warnings', Object.keys(siteManagerErrors).length],
+        ])}
+        <div class="insight-card">
+          <h3>Site Manager sites</h3>
+          <div class="insight-list">
+            ${siteManagerSites.slice(0, 5).map(site => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(siteName(site))}</span><br><span class="subtle">${escapeHtml(site.hostId || site.siteId || '')}</span></span>
+                <span class="pill ${site.isOwner ? 'ok' : 'warn'}">${escapeHtml(site.permission || (site.isOwner ? 'owner' : 'access'))}</span>
+              </div>
+            `).join('') || '<span class="subtle">No Site Manager sites returned yet.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Infrastructure devices</h3>
+          <div class="insight-list">
+            ${siteManagerDevices.slice(0, 6).map(device => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(deviceName(device))}</span><br><span class="subtle">${escapeHtml(deviceModel(device))}</span></span>
+                <span class="pill ${isOnlineDevice(device) ? 'ok' : 'warn'}">${escapeHtml(deviceStatus(device))}</span>
+              </div>
+            `).join('') || '<span class="subtle">No Site Manager devices returned yet.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Local client telemetry</h3>
+          <div class="insight-list">
+            ${clients.slice(0, 5).map(client => `
+              <div class="insight-item">
+                <span><span class="insight-name">${escapeHtml(client.name || client.macAddress || client.id || 'Unknown client')}</span><br><span class="subtle">${escapeHtml(client.ipAddress || client.type || '')}</span></span>
+                <span class="pill ${client.connectedAt ? 'ok' : 'warn'}">${client.connectedAt ? 'active' : 'seen'}</span>
+              </div>
+            `).join('') || '<span class="subtle">Waiting on a local Network API key before client lists and traffic counters are available.</span>'}
+          </div>
+        </div>
+        <div class="insight-card">
+          <h3>Collector details</h3>
+          <div class="insight-list">
+            <div class="insight-item"><span class="subtle">Latency</span><span class="insight-value">${snapshot.latency_ms || 0} ms</span></div>
+            <div class="insight-item"><span class="subtle">Site Manager errors</span><span class="insight-value">${Object.keys(siteManagerErrors).join(', ') || 'none'}</span></div>
+            <div class="insight-item"><span class="subtle">Local API error</span><span class="insight-value">${escapeHtml(snapshot.network_error || 'none')}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInsightCard(title, rows) {
+      return `
+        <div class="insight-card">
+          <h3>${escapeHtml(title)}</h3>
+          <div class="insight-list">
+            ${rows.map(([label, value]) => `
+              <div class="insight-item"><span class="subtle">${escapeHtml(label)}</span><span class="insight-value">${escapeHtml(value)}</span></div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function siteName(site) {
+      const meta = site.meta || {};
+      return meta.desc || meta.name || site.name || site.siteId || 'Unknown site';
+    }
+
+    function deviceName(device) {
+      return device.name || device.displayName || device.model || device.id || 'Unknown device';
+    }
+
+    function deviceModel(device) {
+      return device.model || device.productLine || device.type || device.macAddress || device.id || '';
+    }
+
+    function deviceStatus(device) {
+      const status = device.status || device.state || device.stateText || device.online;
+      if (status === true) return 'online';
+      if (status === false) return 'offline';
+      return String(status || 'unknown');
+    }
+
+    function isOnlineDevice(device) {
+      const status = deviceStatus(device).toLowerCase();
+      return ['online', 'connected', 'active', 'up', 'true'].includes(status);
+    }
+
     function findGateway(devices) {
       return devices.find(item => /udm|gateway|dream machine|router/i.test(`${item.name} ${item.target}`))
         || devices.find(item => item.target.endsWith('.1'))
@@ -444,6 +765,21 @@
       return new Date(value).toLocaleString();
     }
 
+    function formatBytes(value) {
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let amount = Number(value) || 0;
+      let unit = 0;
+      while (amount >= 1024 && unit < units.length - 1) {
+        amount /= 1024;
+        unit += 1;
+      }
+      return `${amount.toFixed(unit ? 1 : 0)} ${units[unit]}`;
+    }
+
+    function formatRate(value) {
+      return `${formatBytes(value)}/s`;
+    }
+
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
@@ -452,6 +788,7 @@
 
     $('kindFilter').addEventListener('change', renderTable);
     $('statusFilter').addEventListener('change', renderTable);
+    window.addEventListener('hashchange', renderPage);
     $('runChecks').addEventListener('click', async () => {
       $('runChecks').disabled = true;
       $('runChecks').textContent = 'Checking…';
@@ -464,6 +801,7 @@
       }
     });
 
+    renderPage();
     refresh().catch(error => {
       $('lastRefresh').textContent = `Load failed: ${error.message}`;
     });

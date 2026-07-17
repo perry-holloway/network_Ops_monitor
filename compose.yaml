@@ -6,8 +6,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8090
     ports:
       - "8090:8090"
     volumes:
       - ./data:/data
-

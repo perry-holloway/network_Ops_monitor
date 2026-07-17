@@ -7,6 +7,7 @@ import time
 from .checks import check_device, check_dns, check_http, check_wan
 from .config import Config
 from .store import Store
+from .unifi_api import UniFiApiClient
 
 LOG = logging.getLogger("ubiquiti-ops.monitor")
 
@@ -38,6 +39,9 @@ class Monitor:
 
         for result in results:
             self.store.add_result(result)
+        if self.config.unifi_api_enabled:
+            snapshot = UniFiApiClient.from_app_config(self.config).collect()
+            self.store.add_unifi_snapshot(snapshot)
         return results
 
     def _run(self) -> None:
@@ -48,4 +52,3 @@ class Monitor:
             except Exception:
                 LOG.exception("operations check failed")
             self._stop.wait(self.config.check_interval_seconds)
-

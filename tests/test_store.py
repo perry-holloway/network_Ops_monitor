@@ -36,6 +36,14 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(summary["totals"]["down"], 1)
             self.assertEqual(summary["totals"]["critical_down"], 1)
 
+    def test_empty_summary_is_valid_before_first_checks_finish(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = Store(str(Path(temp) / "ops-console.db"))
+            summary = store.summary()
+            self.assertEqual(summary["totals"]["checks"], 0)
+            self.assertEqual(summary["latest"], [])
+            self.assertEqual(summary["critical_down"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,125 @@
+import unittest
+
+from ubiquiti_ops.unifi_api import UniFiApiClient, UniFiApiConfig, build_traffic_insights, infer_site_id
+
+
+class UniFiApiTests(unittest.TestCase):
+    def test_infer_site_id_prefers_id(self):
+        self.assertEqual(infer_site_id([{"id": "site-id", "internalReference": "default"}]), "site-id")
+
+    def test_build_traffic_insights_uses_clients_and_device_stats(self):
+        devices = [{
+            "id": "dev1",
+            "name": "UDM Gateway",
+            "ipAddress": "192.168.1.1",
+            "macAddress": "aa:bb:cc:dd:ee:ff",
+            "model": "UDM",
+            "state": "ONLINE",
+        }]
+        clients = [{
+            "id": "client1",
+            "name": "Laptop",
+            "ipAddress": "192.168.1.50",
+            "macAddress": "11:22:33:44:55:66",
+            "rxBytes": 1000,
+            "txBytes": 250,
+        }]
+        stats = [{
+            "deviceId": "dev1",
+            "uplink": {
+                "rxRateBps": 500,
+                "txRateBps": 100,
+            },
+        }]
+        insights = build_traffic_insights(devices, clients, stats, {})
+        self.assertEqual(insights["client_count"], 1)
+        self.assertEqual(insights["device_count"], 1)
+        self.assertEqual(insights["total_client_rx_bytes"], 1000)
+        self.assertEqual(insights["total_client_tx_bytes"], 250)
+        self.assertEqual(insights["top_clients"][0]["name"], "Laptop")
+        self.assertEqual(insights["top_devices"][0]["total_rate_bps"], 600)
+
+    def test_paged_url_accepts_list_payloads(self):
+        client = UniFiApiClient(UniFiApiConfig(base_url="https://example.local", api_key="key"))
+        calls = []
+
+        def fake_request(url, api_key=None, verify_tls=None):
+            calls.append(url)
+            return [{"id": "device-1"}]
+
+        client._request_json = fake_request
+        devices = client._paged_url("https://api.ui.com/v1/devices")
+        self.assertEqual(devices, [{"id": "device-1"}])
+        self.assertEqual(len(calls), 1)
+
+    def test_collect_keeps_site_manager_data_when_network_api_fails(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local",
+            api_key="key",
+            site_manager_enabled=True,
+            site_manager_api_key="key",
+        ))
+        client.list_sites = lambda: (_ for _ in ()).throw(Exception("HTTP Error 403: Forbidden"))
+        client.collect_site_manager = lambda: {
+            "sites": [],
+            "hosts": [],
+            "devices": [{"id": "gateway-1", "name": "UDM"}],
+            "isp_metrics": [],
+            "errors": {},
+        }
+
+        snapshot = client.collect()
+
+        self.assertTrue(snapshot["ok"])
+        self.assertEqual(snapshot["network_error"], "HTTP Error 403: Forbidden")
+        self.assertEqual(snapshot["site_manager_devices"], [{"id": "gateway-1", "name": "UDM"}])
+
+    def test_collect_supports_site_manager_only_key(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local",
+            api_key="",
+            site_manager_enabled=True,
+            site_manager_api_key="site-manager-key",
+        ))
+        client.collect_site_manager = lambda: {
+            "sites": [{"siteId": "site-1", "hostId": "host-1"}],
+            "hosts": [{"id": "host-1", "type": "console"}],
+            "devices": [{"id": "gateway-1", "name": "UDM"}],
+            "isp_metrics": [{"siteId": "site-1"}],
+            "errors": {},
+        }
+
+        snapshot = client.collect()
+
+        self.assertTrue(snapshot["ok"])
+        self.assertIn("local Network API collection skipped", snapshot["network_error"])
+        self.assertEqual(snapshot["site_manager_sites"][0]["siteId"], "site-1")
+        self.assertEqual(snapshot["site_manager_hosts"][0]["id"], "host-1")
+        self.assertEqual(snapshot["site_manager_devices"][0]["name"], "UDM")
+
+    def test_site_manager_paging_uses_next_token(self):
+        client = UniFiApiClient(UniFiApiConfig(
+            base_url="https://example.local",
+            api_key="",
+            site_manager_enabled=True,
+            site_manager_api_key="site-manager-key",
+        ))
+        calls = []
+
+        def fake_request(url, api_key=None, verify_tls=None):
+            calls.append(url)
+            self.assertEqual(api_key, "site-manager-key")
+            self.assertTrue(verify_tls)
+            if "nextToken=next-page" in url:
+                return {"data": [{"id": "host-2"}]}
+            return {"data": [{"id": "host-1"}], "nextToken": "next-page"}
+
+        client._request_json = fake_request
+        hosts = client.list_site_manager_hosts()
+
+        self.assertEqual(hosts, [{"id": "host-1"}, {"id": "host-2"}])
+        self.assertEqual(len(calls), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

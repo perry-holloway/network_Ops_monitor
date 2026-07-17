@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from ubiquiti_ops.config import parse_named_targets, parse_ports, parse_watched_devices
+from ubiquiti_ops.config import Config, parse_named_targets, parse_ports, parse_watched_devices
 
 
 class ConfigTests(unittest.TestCase):
@@ -21,7 +22,31 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(targets[0].name, "Cloudflare DNS")
         self.assertEqual(targets[1].name, "8.8.8.8")
 
+    def test_unifi_api_config_from_env(self):
+        with patch.dict("os.environ", {
+            "UNIFI_API_ENABLED": "true",
+            "UNIFI_API_BASE_URL": "https://192.168.1.1/proxy/network/integration/",
+            "UNIFI_API_KEY": "test-key",
+            "UNIFI_SITE_ID": "default",
+            "UNIFI_VERIFY_TLS": "false",
+            "UNIFI_TIMEOUT_SECONDS": "12",
+            "UNIFI_LEGACY_STATS_ENABLED": "false",
+            "UNIFI_SITE_MANAGER_ENABLED": "true",
+            "UNIFI_SITE_MANAGER_BASE_URL": "https://api.ui.com/",
+            "UNIFI_SITE_MANAGER_API_KEY": "site-manager-key",
+        }):
+            config = Config.from_env()
+        self.assertTrue(config.unifi_api_enabled)
+        self.assertEqual(config.unifi_api_base_url, "https://192.168.1.1/proxy/network/integration")
+        self.assertEqual(config.unifi_api_key, "test-key")
+        self.assertEqual(config.unifi_site_id, "default")
+        self.assertFalse(config.unifi_verify_tls)
+        self.assertEqual(config.unifi_timeout_seconds, 12)
+        self.assertFalse(config.unifi_legacy_stats_enabled)
+        self.assertTrue(config.unifi_site_manager_enabled)
+        self.assertEqual(config.unifi_site_manager_base_url, "https://api.ui.com")
+        self.assertEqual(config.unifi_site_manager_api_key, "site-manager-key")
+
 
 if __name__ == "__main__":
     unittest.main()
-
