@@ -295,6 +295,46 @@
     .attention-title strong { font-size: 15px; }
     .attention-meta { color: var(--muted); line-height: 1.45; }
     .attention-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .timeline-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .timeline-list { display: grid; gap: 12px; position: relative; }
+    .timeline-list::before {
+      content: "";
+      position: absolute;
+      left: 18px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(67,217,239,.6), rgba(34,56,71,.25));
+    }
+    .timeline-item {
+      position: relative;
+      margin-left: 42px;
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.55);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -32px;
+      top: 18px;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--cyan);
+      box-shadow: 0 0 16px rgba(67,217,239,.75);
+    }
+    .timeline-item.critical::before { background: var(--red); box-shadow: 0 0 16px rgba(255,91,110,.75); }
+    .timeline-item.warning::before { background: var(--amber); box-shadow: 0 0 16px rgba(247,185,85,.75); }
+    .timeline-item.success::before { background: var(--green); box-shadow: 0 0 16px rgba(46,212,122,.75); }
+    .timeline-item:hover { border-color: rgba(67,217,239,.5); background: rgba(67,217,239,.05); }
+    .timeline-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .timeline-title strong { font-size: 15px; }
+    .timeline-meta { color: var(--muted); line-height: 1.45; }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
     .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -447,7 +487,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -490,6 +530,7 @@
   <nav class="top-nav" aria-label="Dashboard pages">
     <a href="#summary" data-page-link="summary">Summary</a>
     <a href="#attention" data-page-link="attention">Attention Queue</a>
+    <a href="#timeline" data-page-link="timeline">Timeline</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
     <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
@@ -550,6 +591,14 @@
             <p class="subtle">Work the highest-priority devices, clients, inventory gaps, and trend alerts first.</p>
           </div>
           <a class="page-link" href="#attention">Open queue</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">History</div>
+            <h3>Network timeline</h3>
+            <p class="subtle">Review new clients, outages, recoveries, speed drops, inventory edits, and UniFi changes.</p>
+          </div>
+          <a class="page-link" href="#timeline">Open timeline</a>
         </div>
         <div class="card nav-card">
           <div>
@@ -635,6 +684,39 @@
             <div class="detail-row"><span class="subtle">Inventory</span><strong>Missing owner, location, category, or notes</strong></div>
           </div>
         </div>
+      </section>
+    </section>
+
+    <section id="page-timeline" class="page" data-page="timeline">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Change Log</div>
+          <h2>Network timeline</h2>
+          <p class="subtle">A chronological black box recorder for network changes, outages, recoveries, inventory edits, and performance shifts.</p>
+        </div>
+        <span id="timelineStatus" class="subtle">Waiting for timeline data...</span>
+      </div>
+      <section class="timeline-grid">
+        <div class="card metric"><div class="label">Events</div><div id="timelineTotal" class="value">-</div></div>
+        <div class="card metric"><div class="label">Critical</div><div id="timelineCritical" class="value">-</div></div>
+        <div class="card metric"><div class="label">Warnings</div><div id="timelineWarnings" class="value">-</div></div>
+        <div class="card metric"><div class="label">Recovered</div><div id="timelineSuccess" class="value">-</div></div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <div>
+            <h2>Recent changes</h2>
+            <p class="subtle">Click events tied to devices, clients, or checks to jump into the matching details.</p>
+          </div>
+          <select id="timelineFilter" aria-label="Timeline severity filter">
+            <option value="all">All events</option>
+            <option value="critical">Critical</option>
+            <option value="warning">Warnings</option>
+            <option value="success">Recovered</option>
+            <option value="info">Info</option>
+          </select>
+        </div>
+        <div id="timelineList" class="timeline-list"></div>
       </section>
     </section>
 
@@ -856,8 +938,8 @@
   </div>
 
   <script>
-    const pages = ['summary', 'attention', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, unifiHistory: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'attention', 'timeline', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const state = { summary: null, unifi: null, unifiHistory: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -881,6 +963,7 @@
       state.summary = await api('/api/summary');
       state.unifi = await api('/api/unifi');
       state.unifiHistory = await api(`/api/unifi/history?limit=${$('trendWindow')?.value || 144}`);
+      state.timeline = await api('/api/timeline?limit=150');
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
       renderSummary();
@@ -889,6 +972,7 @@
       renderUnifi();
       renderUnifiHistory();
       renderAttentionQueue();
+      renderTimeline();
       renderClients();
       renderDiscovery();
       renderTable();
@@ -1549,6 +1633,66 @@
 
     function entityNeedsInventory(entity) {
       return missingInventoryFields(entity).length > 0;
+    }
+
+    function renderTimeline() {
+      const timeline = state.timeline || {};
+      const events = timeline.events || [];
+      const filter = $('timelineFilter')?.value || 'all';
+      const filtered = filter === 'all' ? events : events.filter(event => event.severity === filter);
+      $('timelineTotal').textContent = events.length;
+      $('timelineCritical').textContent = events.filter(event => event.severity === 'critical').length;
+      $('timelineWarnings').textContent = events.filter(event => event.severity === 'warning').length;
+      $('timelineSuccess').textContent = events.filter(event => event.severity === 'success').length;
+      $('timelineStatus').textContent = events.length
+        ? `${events.length} recent network events`
+        : 'No timeline events have been recorded yet';
+
+      const list = $('timelineList');
+      list.innerHTML = filtered.length
+        ? filtered.map(renderTimelineItem).join('')
+        : '<div class="empty-diagram">No timeline events match this filter yet.</div>';
+      attachTimelineHandlers(list, filtered);
+    }
+
+    function renderTimelineItem(event, index) {
+      const pillClass = event.severity === 'critical'
+        ? 'down'
+        : event.severity === 'warning'
+          ? 'warn'
+          : event.severity === 'success'
+            ? 'ok'
+            : '';
+      return `
+        <div class="timeline-item ${escapeAttr(event.severity || 'info')}" data-timeline-index="${index}">
+          <div class="timeline-title">
+            <strong>${escapeHtml(event.title || event.kind || 'Network event')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(event.severity || 'info')}</span>
+          </div>
+          <div class="timeline-meta">${escapeHtml(event.summary || '')}</div>
+          <div class="subtle">${formatDate(event.timestamp)} &bull; ${escapeHtml(event.kind || '')}</div>
+        </div>
+      `;
+    }
+
+    function attachTimelineHandlers(root, events) {
+      root.querySelectorAll('[data-timeline-index]').forEach(node => {
+        node.addEventListener('click', () => {
+          const event = events[Number(node.getAttribute('data-timeline-index'))];
+          if (!event) return;
+          if (event.entity_kind === 'device' || event.entity_kind === 'client') {
+            openEntityDetailFromId(event.entity_kind, event.entity_id);
+            return;
+          }
+          if (event.entity_kind === 'check') {
+            const details = event.details || {};
+            const check = (state.summary?.latest || []).find(entry => (
+              entry.target === details.target && entry.kind === details.kind
+            ));
+            if (check) selectCheck(check);
+          }
+        });
+      });
     }
 
     function renderClients() {
@@ -2262,6 +2406,7 @@
     $('clientTypeFilter').addEventListener('change', renderClients);
     $('clientIdentityFilter').addEventListener('change', renderClients);
     $('attentionFilter').addEventListener('change', renderAttentionQueue);
+    $('timelineFilter').addEventListener('change', renderTimeline);
     $('trendWindow').addEventListener('change', () => refresh().catch(error => {
       $('lastRefresh').textContent = `Load failed: ${error.message}`;
     }));

@@ -69,6 +69,11 @@ class OpsHandler(SimpleHTTPRequestHandler):
             limit = _int(query.get("limit", ["50"])[0], 50)
             self._json({"target": target, "history": self.store.history(target, limit)})
             return
+        if parsed.path == "/api/timeline":
+            query = parse_qs(parsed.query)
+            limit = _int(query.get("limit", ["100"])[0], 100)
+            self._json(self.store.network_timeline(limit))
+            return
         if parsed.path == "/api/run-checks":
             results = self.monitor.run_once()
             self._json({"ok": True, "results": results})
