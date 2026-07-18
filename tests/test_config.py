@@ -5,6 +5,7 @@ from ubiquiti_ops.config import (
     Config,
     normalize_mac,
     parse_csv,
+    parse_infrastructure_devices,
     parse_named_targets,
     parse_ports,
     parse_trusted_clients,
@@ -46,6 +47,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(clients[1].mac, "11:22:33:44:55:66")
         self.assertEqual(clients[1].category, "trusted")
 
+    def test_parse_infrastructure_devices(self):
+        devices = parse_infrastructure_devices(
+            "192.168.1.1=UDM Gateway:gateway;"
+            "192.168.1.43=USW Flex Mini:switch:UDM Gateway;"
+            "192.168.1.245=Main AP U6+:ap:USW Flex Mini"
+        )
+        self.assertEqual(len(devices), 3)
+        self.assertEqual(devices[0].role, "gateway")
+        self.assertEqual(devices[1].expected_uplink, "UDM Gateway")
+        self.assertEqual(devices[2].role, "access_point")
+
     def test_normalize_mac_rejects_invalid_values(self):
         self.assertEqual(normalize_mac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff")
         self.assertEqual(normalize_mac("not-a-mac"), "")
@@ -64,6 +76,7 @@ class ConfigTests(unittest.TestCase):
             "UNIFI_SITE_MANAGER_API_KEY": "site-manager-key",
             "UNIFI_WRITE_ACTIONS_ENABLED": "true",
             "UNIFI_WRITE_ACTIONS_CONFIRMATION": "MAINTENANCE",
+            "INFRASTRUCTURE_DEVICES": "192.168.1.1=UDM Gateway:gateway",
             "LAN_DISCOVERY_ENABLED": "true",
             "LAN_DISCOVERY_SUBNETS": "192.168.1.0/24;192.168.2.0/24",
             "LAN_DISCOVERY_PORTS": "80,443",
@@ -92,6 +105,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.unifi_site_manager_api_key, "site-manager-key")
         self.assertTrue(config.unifi_write_actions_enabled)
         self.assertEqual(config.unifi_write_actions_confirmation, "MAINTENANCE")
+        self.assertEqual(config.infrastructure_devices[0].name, "UDM Gateway")
+        self.assertEqual(config.infrastructure_devices[0].role, "gateway")
         self.assertTrue(config.lan_discovery_enabled)
         self.assertEqual(config.lan_discovery_subnets, ("192.168.1.0/24", "192.168.2.0/24"))
         self.assertEqual(config.lan_discovery_ports, (80, 443))

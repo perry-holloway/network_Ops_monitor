@@ -348,6 +348,26 @@
     }
     .source-title, .recommendation-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .source-meta, .recommendation-meta { color: var(--muted); line-height: 1.45; }
+    .infra-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .infra-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+    .infra-list { display: grid; gap: 12px; }
+    .infra-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.52);
+      padding: 14px;
+      display: grid;
+      gap: 9px;
+    }
+    .infra-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .infra-meta { color: var(--muted); line-height: 1.45; }
+    .backbone-path { display: grid; gap: 12px; }
+    .backbone-hop {
+      border: 1px solid rgba(67,217,239,.28);
+      border-radius: 16px;
+      padding: 14px;
+      background: rgba(67,217,239,.06);
+    }
     .ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
     .ops-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
     .ops-list { display: grid; gap: 12px; }
@@ -525,7 +545,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .control-grid, .control-layout, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .control-grid, .control-layout, .infra-grid, .infra-layout, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -570,6 +590,7 @@
     <a href="#attention" data-page-link="attention">Attention Queue</a>
     <a href="#timeline" data-page-link="timeline">Timeline</a>
     <a href="#control-plane" data-page-link="control-plane">Control Plane</a>
+    <a href="#infrastructure" data-page-link="infrastructure">Infrastructure</a>
     <a href="#operations" data-page-link="operations">Device Ops</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
@@ -647,6 +668,14 @@
             <p class="subtle">Track monitor cycles, UniFi API failures, Network app restarts, and root-cause hints.</p>
           </div>
           <a class="page-link" href="#control-plane">Open watchdog</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Inventory</div>
+            <h3>Infrastructure backbone</h3>
+            <p class="subtle">Track UDM, switches, and APs as known infrastructure with roles and expected IPs.</p>
+          </div>
+          <a class="page-link" href="#infrastructure">Open inventory</a>
         </div>
         <div class="card nav-card">
           <div>
@@ -816,6 +845,33 @@
           </select>
         </div>
         <div id="controlTimeline" class="timeline-list"></div>
+      </section>
+    </section>
+
+    <section id="page-infrastructure" class="page" data-page="infrastructure">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Infrastructure Inventory</div>
+          <h2>Known network backbone</h2>
+          <p class="subtle">First-class tracking for expected infrastructure devices, roles, IP addresses, and backbone health.</p>
+        </div>
+        <span id="infraStatus" class="subtle">Waiting for infrastructure data...</span>
+      </div>
+      <section class="infra-grid">
+        <div class="card metric"><div class="label">Configured</div><div id="infraConfigured" class="value">-</div></div>
+        <div class="card metric"><div class="label">Online</div><div id="infraOnline" class="value">-</div></div>
+        <div class="card metric"><div class="label">Offline</div><div id="infraOffline" class="value">-</div></div>
+        <div class="card metric"><div class="label">IP Alerts</div><div id="infraIpAlerts" class="value">-</div></div>
+      </section>
+      <section class="infra-layout">
+        <div class="card panel">
+          <h2>Infrastructure devices</h2>
+          <div id="infraDeviceList" class="infra-list"></div>
+        </div>
+        <div class="card panel">
+          <h2>Backbone path</h2>
+          <div id="infraBackbone" class="backbone-path"></div>
+        </div>
       </section>
     </section>
 
@@ -1081,8 +1137,8 @@
   </div>
 
   <script>
-    const pages = ['summary', 'attention', 'timeline', 'control-plane', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, controlPlane: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'attention', 'timeline', 'control-plane', 'infrastructure', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, controlPlane: null, infrastructure: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -1108,6 +1164,7 @@
       state.unifiHistory = await api(`/api/unifi/history?limit=${$('trendWindow')?.value || 144}`);
       state.unifiActions = await api('/api/unifi/actions?limit=25');
       state.controlPlane = await api('/api/control-plane?limit=150');
+      state.infrastructure = await api('/api/infrastructure');
       state.timeline = await api('/api/timeline?limit=150');
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
@@ -1119,6 +1176,7 @@
       renderAttentionQueue();
       renderTimeline();
       renderControlPlane();
+      renderInfrastructure();
       renderOperations();
       renderClients();
       renderDiscovery();
@@ -1227,6 +1285,12 @@
     function renderDiagram() {
       const diagram = $('networkDiagram');
       const checks = state.summary.latest || [];
+      const infrastructure = state.infrastructure || {};
+      const backbone = infrastructure.backbone || {};
+      if (infrastructure.configured) {
+        renderInfrastructureDiagram(diagram, backbone, checks);
+        return;
+      }
       if (!checks.length) {
         diagram.className = 'empty-diagram';
         diagram.textContent = 'No checks have been recorded yet. Run checks once the container is started.';
@@ -1253,6 +1317,42 @@
         <div class="diagram-column devices">
           <div class="diagram-column-title">Watched devices</div>
           ${downstreamDevices.length ? downstreamDevices.map(renderNode).join('') : '<div class="node"><div class="node-title">No downstream devices</div><div class="node-meta">Add more WATCHED_DEVICES entries in .env.</div></div>'}
+        </div>
+      `;
+
+      diagram.querySelectorAll('[data-target]').forEach(node => {
+        node.addEventListener('click', () => {
+          const target = node.getAttribute('data-target');
+          const kind = node.getAttribute('data-kind');
+          const item = checks.find(check => check.target === target && check.kind === kind);
+          if (item) selectCheck(item);
+        });
+      });
+    }
+
+    function renderInfrastructureDiagram(diagram, backbone, checks) {
+      diagram.className = 'network-map';
+      const wanChecks = checks.filter(item => item.kind === 'wan' || item.kind === 'dns' || item.kind === 'http');
+      const gateway = backbone.gateway || {};
+      const switches = backbone.switches || [];
+      const accessPoints = backbone.access_points || [];
+      const other = backbone.other || [];
+      diagram.innerHTML = `
+        <div class="diagram-column">
+          <div class="diagram-column-title">Internet / WAN</div>
+          ${wanChecks.length ? wanChecks.map(renderNode).join('') : '<div class="node"><div class="node-title">No WAN checks</div><div class="node-meta">Add WAN_TARGETS, DNS_LOOKUPS, or HTTP_CHECKS.</div></div>'}
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="diagram-column">
+          <div class="diagram-column-title">Gateway</div>
+          ${gateway.address ? renderInfraNode(gateway, 'gateway') : '<div class="node gateway"><div class="node-title">No gateway configured</div><div class="node-meta">Add a gateway role to INFRASTRUCTURE_DEVICES.</div></div>'}
+        </div>
+        <div class="connector" aria-hidden="true"></div>
+        <div class="diagram-column devices">
+          <div class="diagram-column-title">Switches / APs / Infrastructure</div>
+          ${[...switches, ...accessPoints, ...other].length
+            ? [...switches, ...accessPoints, ...other].map(renderInfraNode).join('')
+            : '<div class="node"><div class="node-title">No downstream infrastructure</div><div class="node-meta">Add switch and access_point roles to INFRASTRUCTURE_DEVICES.</div></div>'}
         </div>
       `;
 
@@ -1876,6 +1976,77 @@
       $('controlTimeline').innerHTML = filtered.length
         ? filtered.map(renderControlEvent).join('')
         : '<div class="empty-diagram">No control-plane events match this filter.</div>';
+    }
+
+    function renderInfrastructure() {
+      const infra = state.infrastructure || {};
+      const totals = infra.totals || {};
+      const devices = infra.devices || [];
+      const backbone = infra.backbone || {};
+      $('infraConfigured').textContent = totals.configured || 0;
+      $('infraOnline').textContent = totals.online || 0;
+      $('infraOffline').textContent = totals.offline || 0;
+      $('infraIpAlerts').textContent = totals.ip_mismatch || 0;
+      $('infraOffline').style.color = totals.offline ? 'var(--red)' : 'var(--green)';
+      $('infraIpAlerts').style.color = totals.ip_mismatch ? 'var(--amber)' : 'var(--green)';
+      $('infraStatus').textContent = infra.configured
+        ? `${totals.configured || 0} known infrastructure devices`
+        : 'No INFRASTRUCTURE_DEVICES configured yet';
+      $('infraDeviceList').innerHTML = devices.length
+        ? devices.map(renderInfrastructureDevice).join('')
+        : '<div class="empty-diagram">Add INFRASTRUCTURE_DEVICES in .env to track the UDM, switches, and APs as known backbone devices.</div>';
+      $('infraBackbone').innerHTML = renderBackbone(backbone);
+    }
+
+    function renderInfrastructureDevice(device) {
+      const pillClass = device.status === 'online' ? 'ok' : device.status === 'offline' ? 'down' : 'warn';
+      const mismatch = device.ip_mismatch
+        ? `<div class="notice">Expected ${escapeHtml(device.expected_ip)}, observed ${escapeHtml(device.observed_ip || 'unknown')}.</div>`
+        : '';
+      return `
+        <div class="infra-card">
+          <div class="infra-title">
+            <strong>${escapeHtml(device.name)}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(device.status || 'unknown')}</span>
+          </div>
+          <div class="infra-meta">
+            <span class="pill">${escapeHtml(device.role_label || device.role || 'Infrastructure')}</span>
+            ${escapeHtml(device.expected_ip || device.address || '-')} &bull; ${escapeHtml(device.model || 'model unknown')}<br>
+            Firmware ${escapeHtml(device.firmware || '-')} &bull; Source ${escapeHtml(device.source || 'configured')}<br>
+            ${device.latency_ms ? `${device.latency_ms} ms &bull; ` : ''}${escapeHtml(device.check_status || device.unifi_state || 'waiting for data')}
+          </div>
+          ${mismatch}
+        </div>
+      `;
+    }
+
+    function renderBackbone(backbone) {
+      if (!backbone || !Object.keys(backbone).length) {
+        return '<div class="empty-diagram">No backbone path configured yet.</div>';
+      }
+      const gateway = backbone.gateway || {};
+      const switches = backbone.switches || [];
+      const aps = backbone.access_points || [];
+      const other = backbone.other || [];
+      const rows = [];
+      if (gateway.address) rows.push(renderBackboneHop('1', 'Gateway', gateway));
+      switches.forEach((device, index) => rows.push(renderBackboneHop(`${index + 2}`, 'Switch', device)));
+      aps.forEach((device, index) => rows.push(renderBackboneHop(`${switches.length + index + 2}`, 'Access point', device)));
+      other.forEach((device, index) => rows.push(renderBackboneHop(`${switches.length + aps.length + index + 2}`, device.role_label || 'Infrastructure', device)));
+      return rows.length ? rows.join('') : '<div class="empty-diagram">No backbone devices configured yet.</div>';
+    }
+
+    function renderBackboneHop(step, label, device) {
+      const pillClass = device.status === 'online' ? 'ok' : device.status === 'offline' ? 'down' : 'warn';
+      return `
+        <div class="backbone-hop">
+          <div class="infra-title">
+            <strong>${escapeHtml(step)}. ${escapeHtml(label)} - ${escapeHtml(device.name || 'Unknown')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(device.status || 'unknown')}</span>
+          </div>
+          <div class="infra-meta">${escapeHtml(device.expected_ip || device.address || '-')} ${device.expected_uplink ? `&bull; uplink ${escapeHtml(device.expected_uplink)}` : ''}</div>
+        </div>
+      `;
     }
 
     function renderControlSource(event) {
@@ -2736,6 +2907,19 @@
           <span class="node-title">${escapeHtml(item.name)}</span>
           <span class="node-meta">${escapeHtml(item.kind.toUpperCase())} - ${escapeHtml(item.target)}<br>${item.latency_ms} ms - ${formatDate(item.checked_at)}</span>
           <span class="pill node-status ${pillClass}">${escapeHtml(item.status)}</span>
+        </button>
+      `;
+    }
+
+    function renderInfraNode(item, extraClass = '') {
+      const ok = item.status === 'online';
+      const statusClass = ok ? 'ok-node' : item.status === 'offline' ? 'down-node' : '';
+      const pillClass = ok ? 'ok' : item.status === 'offline' ? 'down' : 'warn';
+      return `
+        <button class="node ${statusClass} ${extraClass}" data-target="${escapeHtml(item.expected_ip || item.address)}" data-kind="device" type="button">
+          <span class="node-title">${escapeHtml(item.name)}</span>
+          <span class="node-meta">${escapeHtml(item.role_label || item.role || 'Infrastructure')} - ${escapeHtml(item.expected_ip || item.address)}<br>${escapeHtml(item.model || 'model unknown')} ${item.latency_ms ? `- ${item.latency_ms} ms` : ''}</span>
+          <span class="pill node-status ${pillClass}">${escapeHtml(item.status || 'unknown')}</span>
         </button>
       `;
     }
