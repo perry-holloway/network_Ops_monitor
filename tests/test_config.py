@@ -62,6 +62,8 @@ class ConfigTests(unittest.TestCase):
             "UNIFI_SITE_MANAGER_ENABLED": "true",
             "UNIFI_SITE_MANAGER_BASE_URL": "https://api.ui.com/",
             "UNIFI_SITE_MANAGER_API_KEY": "site-manager-key",
+            "UNIFI_WRITE_ACTIONS_ENABLED": "true",
+            "UNIFI_WRITE_ACTIONS_CONFIRMATION": "MAINTENANCE",
             "LAN_DISCOVERY_ENABLED": "true",
             "LAN_DISCOVERY_SUBNETS": "192.168.1.0/24;192.168.2.0/24",
             "LAN_DISCOVERY_PORTS": "80,443",
@@ -88,6 +90,8 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(config.unifi_site_manager_enabled)
         self.assertEqual(config.unifi_site_manager_base_url, "https://api.ui.com")
         self.assertEqual(config.unifi_site_manager_api_key, "site-manager-key")
+        self.assertTrue(config.unifi_write_actions_enabled)
+        self.assertEqual(config.unifi_write_actions_confirmation, "MAINTENANCE")
         self.assertTrue(config.lan_discovery_enabled)
         self.assertEqual(config.lan_discovery_subnets, ("192.168.1.0/24", "192.168.2.0/24"))
         self.assertEqual(config.lan_discovery_ports, (80, 443))

@@ -335,6 +335,31 @@
     .timeline-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .timeline-title strong { font-size: 15px; }
     .timeline-meta { color: var(--muted); line-height: 1.45; }
+    .ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .ops-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+    .ops-list { display: grid; gap: 12px; }
+    .ops-item {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.52);
+      padding: 14px;
+      display: grid;
+      gap: 9px;
+    }
+    .ops-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .ops-meta { color: var(--muted); line-height: 1.45; }
+    .ops-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .danger-action { border-color: rgba(255,91,110,.45); background: rgba(255,91,110,.09); }
+    .port-grid { display: grid; gap: 10px; }
+    .port-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(6,16,22,.45);
+    }
     .client-filters { display: flex; gap: 10px; flex-wrap: wrap; }
     .client-filters input { min-width: min(360px, 100%); }
     .trust-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -487,7 +512,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -531,6 +556,7 @@
     <a href="#summary" data-page-link="summary">Summary</a>
     <a href="#attention" data-page-link="attention">Attention Queue</a>
     <a href="#timeline" data-page-link="timeline">Timeline</a>
+    <a href="#operations" data-page-link="operations">Device Ops</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
     <a href="#unifi" data-page-link="unifi">UniFi Insights</a>
@@ -599,6 +625,14 @@
             <p class="subtle">Review new clients, outages, recoveries, speed drops, inventory edits, and UniFi changes.</p>
           </div>
           <a class="page-link" href="#timeline">Open timeline</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Control</div>
+            <h3>Device operations</h3>
+            <p class="subtle">Inspect uplinks, temperature, memory, ports, client signal, and guarded operation requests.</p>
+          </div>
+          <a class="page-link" href="#operations">Open ops center</a>
         </div>
         <div class="card nav-card">
           <div>
@@ -717,6 +751,50 @@
           </select>
         </div>
         <div id="timelineList" class="timeline-list"></div>
+      </section>
+    </section>
+
+    <section id="page-operations" class="page" data-page="operations">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Device Operations</div>
+          <h2>UniFi device and client control center</h2>
+          <p class="subtle">Read device uplinks, firmware, temperature, memory, switch ports, client signal, bandwidth, and create guarded local operation requests.</p>
+        </div>
+        <span id="opsStatus" class="subtle">Waiting for UniFi data...</span>
+      </div>
+      <section class="ops-grid">
+        <div class="card metric"><div class="label">Devices</div><div id="opsDeviceCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Clients</div><div id="opsClientCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Switch Ports</div><div id="opsPortCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Write Actions</div><div id="opsWriteState" class="value">-</div></div>
+      </section>
+      <section class="card panel">
+        <div id="opsNotice" class="notice">Controller-changing actions are disabled by default. Buttons below record local operation requests unless write actions are explicitly enabled.</div>
+      </section>
+      <section class="ops-layout">
+        <div class="card panel">
+          <h2>Device operations</h2>
+          <div id="opsDeviceList" class="ops-list"></div>
+        </div>
+        <div class="card panel">
+          <h2>Client monitoring and policy</h2>
+          <div id="opsClientList" class="ops-list"></div>
+        </div>
+      </section>
+      <section class="ops-layout">
+        <div class="card panel">
+          <h2>Ports and interfaces</h2>
+          <div id="opsPortList" class="port-grid"></div>
+        </div>
+        <div class="card panel">
+          <h2>Policy enforcement</h2>
+          <div id="opsPolicyList" class="ops-list"></div>
+        </div>
+      </section>
+      <section class="card panel">
+        <h2>Recent operation requests</h2>
+        <div id="opsActionHistory" class="ops-list"></div>
       </section>
     </section>
 
@@ -938,8 +1016,8 @@
   </div>
 
   <script>
-    const pages = ['summary', 'attention', 'timeline', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, unifiHistory: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'attention', 'timeline', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -963,6 +1041,7 @@
       state.summary = await api('/api/summary');
       state.unifi = await api('/api/unifi');
       state.unifiHistory = await api(`/api/unifi/history?limit=${$('trendWindow')?.value || 144}`);
+      state.unifiActions = await api('/api/unifi/actions?limit=25');
       state.timeline = await api('/api/timeline?limit=150');
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
@@ -973,6 +1052,7 @@
       renderUnifiHistory();
       renderAttentionQueue();
       renderTimeline();
+      renderOperations();
       renderClients();
       renderDiscovery();
       renderTable();
@@ -1695,6 +1775,192 @@
       });
     }
 
+    function renderOperations() {
+      const snapshot = state.unifi || {};
+      const actions = state.unifiActions || {};
+      const insights = snapshot.traffic_insights || {};
+      const devices = dedupeEntities([...(snapshot.site_manager_devices || []), ...(snapshot.devices || []), ...(insights.top_devices || [])]);
+      const clients = dedupeEntities([...(snapshot.clients || []), ...(insights.top_clients || [])]);
+      const ports = collectOperationPorts(devices, snapshot.device_statistics || []);
+      $('opsDeviceCount').textContent = devices.length;
+      $('opsClientCount').textContent = clients.length;
+      $('opsPortCount').textContent = ports.length;
+      $('opsWriteState').textContent = actions.write_actions_enabled ? 'Enabled' : 'Off';
+      $('opsStatus').textContent = snapshot.api_enabled
+        ? `${devices.length} devices / ${clients.length} clients`
+        : 'UniFi collector disabled';
+      $('opsNotice').textContent = actions.write_actions_enabled
+        ? 'Write actions are enabled. Operation requests still require the local confirmation token before they are accepted.'
+        : 'Write actions are disabled. Buttons below record blocked local operation requests until UNIFI_WRITE_ACTIONS_ENABLED=true is set for a planned maintenance window.';
+
+      $('opsDeviceList').innerHTML = devices.length
+        ? devices.slice(0, 20).map(renderOperationDevice).join('')
+        : '<div class="empty-diagram">No UniFi devices returned yet.</div>';
+      $('opsClientList').innerHTML = clients.length
+        ? clients.slice(0, 20).map(renderOperationClient).join('')
+        : '<div class="empty-diagram">No UniFi clients returned yet.</div>';
+      $('opsPortList').innerHTML = ports.length
+        ? ports.slice(0, 40).map(renderOperationPort).join('')
+        : '<div class="empty-diagram">No switch port details returned by the current API snapshot.</div>';
+      $('opsPolicyList').innerHTML = renderPolicyActions();
+      $('opsActionHistory').innerHTML = (actions.actions || []).length
+        ? actions.actions.map(renderActionHistoryItem).join('')
+        : '<div class="empty-diagram">No operation requests recorded yet.</div>';
+      attachOperationHandlers();
+    }
+
+    function renderOperationDevice(device) {
+      const id = entityKey(device);
+      return `
+        <div class="ops-item">
+          <div class="ops-title">
+            <strong>${escapeHtml(deviceName(device))}</strong>
+            <span class="pill ${isOnlineDevice(device) ? 'ok' : 'warn'}">${escapeHtml(deviceStatus(device))}</span>
+          </div>
+          <div class="ops-meta">
+            ${escapeHtml(deviceModel(device) || 'UniFi device')} &bull; ${escapeHtml(device.ipAddress || device.ip || 'No IP')}<br>
+            Firmware ${escapeHtml(device.firmwareVersion || device.version || '-')} &bull;
+            Uplink ${escapeHtml(device.uplink_name || device.uplinkDeviceId || '-')} ${escapeHtml(device.uplink_state || '')}<br>
+            Temp ${formatTemperature(device.temperature_c)} &bull; Memory ${formatPercent(device.memory_pct || 0)} &bull; CPU ${formatPercent(device.cpu_pct || 0)}
+          </div>
+          <div class="ops-actions">
+            <button data-op-action="reboot_device" data-target-kind="device" data-target-id="${escapeAttr(id)}" class="danger-action">Request reboot</button>
+            <button data-op-action="update_firmware" data-target-kind="device" data-target-id="${escapeAttr(id)}" class="danger-action">Request firmware update</button>
+            <button type="button" data-op-open-kind="device" data-op-open-id="${escapeAttr(id)}">Open details</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderOperationClient(client) {
+      const id = entityKey(client);
+      const trusted = isTrustedClient(client);
+      return `
+        <div class="ops-item">
+          <div class="ops-title">
+            <strong>${escapeHtml(clientName(client))}</strong>
+            <span class="pill ${trusted ? 'ok' : 'warn'}">${trusted ? 'trusted' : 'review'}</span>
+          </div>
+          <div class="ops-meta">
+            MAC ${escapeHtml(client.macAddress || client.mac || '-')} &bull; IP ${escapeHtml(client.ipAddress || client.ip || '-')}<br>
+            Signal ${formatSignal(client.signal_dbm || client.rssi || client.signal)} &bull;
+            SSID ${escapeHtml(client.ssid || '-')} &bull; VLAN ${escapeHtml(client.vlan || '-')}<br>
+            Traffic ${formatBytes(clientTotalBytes(client))} &bull; Rate ${formatRate(clientTotalRate(client))}
+          </div>
+          <div class="ops-actions">
+            <button data-op-action="${trusted ? 'block_client' : 'unblock_client'}" data-target-kind="client" data-target-id="${escapeAttr(id)}" class="danger-action">${trusted ? 'Request block' : 'Request unblock'}</button>
+            <button data-op-action="assign_client_vlan" data-target-kind="client" data-target-id="${escapeAttr(id)}">Request VLAN assignment</button>
+            <button type="button" data-op-open-kind="client" data-op-open-id="${escapeAttr(id)}">Open details</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderOperationPort(item) {
+      return `
+        <div class="port-row">
+          <div>
+            <strong>${escapeHtml(item.deviceName)} / ${escapeHtml(item.name)}</strong>
+            <div class="ops-meta">
+              State ${escapeHtml(item.state || '-')} &bull; Speed ${escapeHtml(item.speed || '-')} &bull;
+              PoE ${escapeHtml(item.poe || '-')} &bull; Profile ${escapeHtml(item.profile || '-')}<br>
+              RX ${formatRate(item.rx_rate_bps || 0)} / TX ${formatRate(item.tx_rate_bps || 0)}
+            </div>
+          </div>
+          <div class="ops-actions">
+            <button data-op-action="toggle_poe" data-target-kind="port" data-target-id="${escapeAttr(item.id)}" class="danger-action">Toggle PoE</button>
+            <button data-op-action="set_port_profile" data-target-kind="port" data-target-id="${escapeAttr(item.id)}">Port profile</button>
+            <button data-op-action="set_port_speed" data-target-kind="port" data-target-id="${escapeAttr(item.id)}">Port speed</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPolicyActions() {
+      return `
+        <div class="ops-item">
+          <div class="ops-title"><strong>Firewall, Wi-Fi, and ACL changes</strong><span class="pill warn">guarded</span></div>
+          <div class="ops-meta">Use this area to record planned policy requests before wiring controller-side enforcement.</div>
+          <div class="ops-actions">
+            <button data-op-action="apply_firewall_rule" data-target-kind="policy" data-target-id="firewall" class="danger-action">Firewall rule</button>
+            <button data-op-action="apply_wifi_setting" data-target-kind="policy" data-target-id="wifi" class="danger-action">Wi-Fi setting</button>
+            <button data-op-action="apply_acl" data-target-kind="policy" data-target-id="acl" class="danger-action">ACL change</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderActionHistoryItem(action) {
+      const pillClass = action.status === 'blocked' ? 'warn' : 'ok';
+      return `
+        <div class="ops-item">
+          <div class="ops-title">
+            <strong>${escapeHtml(action.action || 'operation')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(action.status || 'recorded')}</span>
+          </div>
+          <div class="ops-meta">${formatDate(action.requested_at)} &bull; ${escapeHtml(action.target_kind || '')} ${escapeHtml(action.target_id || '')}<br>${escapeHtml(action.message || '')}</div>
+        </div>
+      `;
+    }
+
+    function attachOperationHandlers() {
+      document.querySelectorAll('[data-op-open-kind]').forEach(button => {
+        button.addEventListener('click', () => openEntityDetailFromId(
+          button.getAttribute('data-op-open-kind'),
+          button.getAttribute('data-op-open-id'),
+        ));
+      });
+
+      document.querySelectorAll('[data-op-action]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const action = button.getAttribute('data-op-action');
+          const targetKind = button.getAttribute('data-target-kind');
+          const targetId = button.getAttribute('data-target-id');
+          const confirmation = window.prompt(`Record ${action} for ${targetKind} ${targetId}? Enter your local confirmation token if write actions are enabled, or leave blank to record a blocked request.`) || '';
+          button.disabled = true;
+          try {
+            await postJson('/api/unifi/action', {
+              action,
+              target_kind: targetKind,
+              target_id: targetId,
+              confirmation,
+              params: {},
+            });
+            state.unifiActions = await api('/api/unifi/actions?limit=25');
+            renderOperations();
+          } catch (error) {
+            window.alert(`Operation request failed: ${error.message}`);
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+    }
+
+    function collectOperationPorts(devices, stats) {
+      const output = [];
+      for (const device of devices) {
+        const deviceId = entityKey(device);
+        const stat = (stats || []).find(item => String(item.deviceId || item.id || '') === deviceId) || {};
+        const ports = device.ports || stat.ports || [];
+        if (!Array.isArray(ports)) continue;
+        ports.forEach((port, index) => {
+          output.push({
+            id: `${deviceId}:${port.id || port.idx || port.portIdx || index + 1}`,
+            deviceName: deviceName(device),
+            name: port.name || port.label || `Port ${index + 1}`,
+            state: port.state || port.status || port.linkState || '',
+            speed: port.speed || port.speedMbps || port.linkSpeed || '',
+            poe: port.poe || port.poeMode || port.poeState || '',
+            profile: port.profile || port.portProfile || port.nativeNetworkName || '',
+            rx_rate_bps: Number(port.rx_rate_bps || port.rxRateBps || 0),
+            tx_rate_bps: Number(port.tx_rate_bps || port.txRateBps || 0),
+          });
+        });
+      }
+      return output;
+    }
+
     function renderClients() {
       const snapshot = state.unifi || {};
       const notice = $('clientNotice');
@@ -1905,6 +2171,7 @@
             ['MAC address', device.macAddress || device.mac || '-'],
             ['Firmware', device.firmwareVersion || device.version || '-'],
             ['State', deviceStatus(device) || device.state || '-'],
+            ['Temperature', formatTemperature(device.temperature_c)],
           ]],
           ['Local management', [
             ['Owner', device.owner || '-'],
@@ -1925,6 +2192,7 @@
             ['Ports', device.port_count ?? device.ports?.length ?? '-'],
             ['Radios', device.radio_count ?? device.radios?.length ?? '-'],
             ['Uplink', device.uplink_name || device.uplinkDeviceId || '-'],
+            ['Uplink state', device.uplink_state || '-'],
             ['Downlinks', device.downlink_count ?? '-'],
             ['Features', Array.isArray(device.features) ? device.features.join(', ') : '-'],
             ['Interfaces', Array.isArray(device.interfaces) ? device.interfaces.join(', ') : '-'],
@@ -1951,6 +2219,8 @@
             ['MAC address', client.macAddress || client.mac || '-'],
             ['Access type', clientType(client)],
             ['Network', client.network || client.type || '-'],
+            ['SSID', client.ssid || '-'],
+            ['VLAN', client.vlan || '-'],
             ['Client ID', client.id || '-'],
           ]],
           ['Trust and triage', [
@@ -1960,6 +2230,7 @@
             ['Needs naming', isUnnamedClient(client) ? 'Yes' : 'No'],
             ['Connected', formatDate(client.connectedAt || client.lastSeenAt || client.last_seen || '')],
             ['Normalized MAC', client.normalizedMac || '-'],
+            ['Signal', formatSignal(client.signal_dbm || client.rssi || client.signal)],
             ['Owner', client.owner || '-'],
             ['Location', client.location || '-'],
             ['Notes', client.notes || '-'],
@@ -1970,6 +2241,8 @@
             ['Download / RX', formatBytes(clientRxBytes(client))],
             ['Upload / TX', formatBytes(clientTxBytes(client))],
             ['Current rate', formatRate(clientTotalRate(client))],
+            ['Wi-Fi TX rate', client.tx_rate_mbps ? `${client.tx_rate_mbps} Mbps` : '-'],
+            ['Wi-Fi RX rate', client.rx_rate_mbps ? `${client.rx_rate_mbps} Mbps` : '-'],
             ['RX rate', formatRate(clientRxRate(client))],
             ['TX rate', formatRate(clientTxRate(client))],
           ]],
@@ -2388,6 +2661,16 @@
     function formatPercent(value) {
       const amount = Number(value) || 0;
       return amount ? `${amount.toFixed(0)}%` : '-';
+    }
+
+    function formatTemperature(value) {
+      const amount = Number(value) || 0;
+      return amount ? `${amount.toFixed(1)} C` : '-';
+    }
+
+    function formatSignal(value) {
+      const amount = Number(value) || 0;
+      return amount ? `${amount} dBm` : '-';
     }
 
     function escapeAttr(value) {

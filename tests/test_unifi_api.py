@@ -49,13 +49,24 @@ class UniFiApiTests(unittest.TestCase):
             "macAddress": "11:22:33:44:55:66",
             "rxBytes": 1000,
             "txBytes": 250,
+            "rssi": -61,
+            "ssid": "HomeWiFi",
         }]
         stats = [{
             "deviceId": "dev1",
             "uplink": {
                 "rxRateBps": 500,
                 "txRateBps": 100,
+                "state": "active",
             },
+            "temperatureC": 43,
+            "memoryUtilizationPct": 52,
+            "ports": [{
+                "idx": 1,
+                "name": "Port 1",
+                "poeMode": "auto",
+                "speedMbps": 1000,
+            }],
         }]
         insights = build_traffic_insights(devices, clients, stats, {})
         self.assertEqual(insights["client_count"], 1)
@@ -63,7 +74,13 @@ class UniFiApiTests(unittest.TestCase):
         self.assertEqual(insights["total_client_rx_bytes"], 1000)
         self.assertEqual(insights["total_client_tx_bytes"], 250)
         self.assertEqual(insights["top_clients"][0]["name"], "Laptop")
+        self.assertEqual(insights["top_clients"][0]["signal_dbm"], -61)
+        self.assertEqual(insights["top_clients"][0]["ssid"], "HomeWiFi")
         self.assertEqual(insights["top_devices"][0]["total_rate_bps"], 600)
+        self.assertEqual(insights["top_devices"][0]["temperature_c"], 43)
+        self.assertEqual(insights["top_devices"][0]["memory_pct"], 52)
+        self.assertEqual(insights["top_devices"][0]["uplink_state"], "active")
+        self.assertEqual(insights["top_devices"][0]["ports"][0]["poe"], "auto")
 
     def test_annotate_trusted_clients_marks_known_macs(self):
         clients = [

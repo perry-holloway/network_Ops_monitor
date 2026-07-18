@@ -261,6 +261,25 @@ class StoreTests(unittest.TestCase):
             self.assertIn("speed_drop", kinds)
             self.assertIn("inventory_updated", kinds)
 
+    def test_unifi_action_requests_round_trip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = Store(str(Path(temp) / "ops-console.db"))
+            recorded = store.record_unifi_action({
+                "action": "reboot_device",
+                "target_kind": "device",
+                "target_id": "device-1",
+                "status": "blocked",
+                "message": "Write actions are disabled.",
+                "params": {"reason": "test"},
+            })
+            actions = store.unifi_actions()
+
+            self.assertEqual(recorded["id"], 1)
+            self.assertEqual(actions["count"], 1)
+            self.assertEqual(actions["actions"][0]["action"], "reboot_device")
+            self.assertEqual(actions["actions"][0]["target_id"], "device-1")
+            self.assertEqual(actions["actions"][0]["status"], "blocked")
+
 
 if __name__ == "__main__":
     unittest.main()
