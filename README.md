@@ -17,6 +17,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Run a manual WAN speed test from the dashboard and keep the latest result
 - Watch control-plane reliability with classified UniFi API failures, monitor-cycle health, and next-step hints
 - Track known infrastructure devices with roles, expected IPs, backbone order, and IP drift warnings
+- Correlate related outages into likely root causes such as gateway, switch/uplink, AP, WAN/ISP, or control-plane issues
 - Persist check history in SQLite
 - Provide a local dashboard and JSON API
 - Run beside the existing threat monitor on port `8090`
@@ -81,6 +82,19 @@ ip=name:role[:expected_uplink]
 Roles: `gateway`, `switch`, `access_point`, `server`, `storage`, or `other`.
 
 The Infrastructure page shows role badges, expected IPs, observed UniFi inventory data, health-check status, and warnings when a known device appears at an unexpected IP.
+
+### Outage correlation
+
+The Outages page groups related failures so a single root problem does not look like many independent alerts.
+
+Examples:
+
+- UDM Gateway offline plus downstream checks failing -> likely gateway/root outage
+- USW Flex Mini offline plus Main AP U6+ offline -> likely switch or uplink issue
+- WAN/DNS/HTTP checks failing while the gateway is online -> likely ISP/WAN issue
+- UniFi collector/API failures while checks are otherwise healthy -> likely telemetry/control-plane issue
+
+Correlation works best when `WATCHED_DEVICES` and `INFRASTRUCTURE_DEVICES` both include your backbone devices and expected uplinks.
 
 ### WAN checks
 
@@ -225,6 +239,7 @@ POST /api/unifi/action
 GET /api/timeline
 GET /api/control-plane
 GET /api/infrastructure
+GET /api/outages
 GET /api/discovery
 GET /api/speed-test
 GET /api/speed-test/run

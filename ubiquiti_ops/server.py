@@ -11,6 +11,7 @@ from .config import Config
 from .control_plane import monitor_cycle_event
 from .infrastructure import build_infrastructure_summary
 from .monitor import Monitor
+from .outage_correlation import build_outage_correlations
 from .store import Store
 
 
@@ -93,6 +94,19 @@ class OpsHandler(SimpleHTTPRequestHandler):
                 self.config.infrastructure_devices,
                 self.store.summary(),
                 self.store.latest_unifi_snapshot(),
+            ))
+            return
+        if parsed.path == "/api/outages":
+            infrastructure = build_infrastructure_summary(
+                self.config.infrastructure_devices,
+                self.store.summary(),
+                self.store.latest_unifi_snapshot(),
+            )
+            self._json(build_outage_correlations(
+                self.store.summary(),
+                infrastructure,
+                self.store.network_timeline(150),
+                self.store.control_plane_summary(50),
             ))
             return
         if parsed.path == "/api/run-checks":
