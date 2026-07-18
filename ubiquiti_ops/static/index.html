@@ -368,6 +368,21 @@
       padding: 14px;
       background: rgba(67,217,239,.06);
     }
+    .outage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .outage-list { display: grid; gap: 12px; }
+    .outage-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 18px;
+      background: rgba(6,16,22,.56);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .outage-card.critical { border-color: rgba(255,91,110,.52); background: rgba(255,91,110,.07); }
+    .outage-card.warning { border-color: rgba(247,185,85,.48); background: rgba(247,185,85,.07); }
+    .outage-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .outage-meta { color: var(--muted); line-height: 1.45; }
+    .evidence-list { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.5; }
     .ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
     .ops-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
     .ops-list { display: grid; gap: 12px; }
@@ -545,7 +560,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .control-grid, .control-layout, .infra-grid, .infra-layout, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .control-grid, .control-layout, .infra-grid, .infra-layout, .outage-grid, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -591,6 +606,7 @@
     <a href="#timeline" data-page-link="timeline">Timeline</a>
     <a href="#control-plane" data-page-link="control-plane">Control Plane</a>
     <a href="#infrastructure" data-page-link="infrastructure">Infrastructure</a>
+    <a href="#outages" data-page-link="outages">Outages</a>
     <a href="#operations" data-page-link="operations">Device Ops</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
@@ -676,6 +692,14 @@
             <p class="subtle">Track UDM, switches, and APs as known infrastructure with roles and expected IPs.</p>
           </div>
           <a class="page-link" href="#infrastructure">Open inventory</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Correlation</div>
+            <h3>Outage root cause</h3>
+            <p class="subtle">Group related failures and identify likely gateway, switch, AP, WAN, or control-plane causes.</p>
+          </div>
+          <a class="page-link" href="#outages">Open outages</a>
         </div>
         <div class="card nav-card">
           <div>
@@ -872,6 +896,27 @@
           <h2>Backbone path</h2>
           <div id="infraBackbone" class="backbone-path"></div>
         </div>
+      </section>
+    </section>
+
+    <section id="page-outages" class="page" data-page="outages">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Outage Correlation</div>
+          <h2>Likely root cause analysis</h2>
+          <p class="subtle">Related failures are grouped so a switch, AP, gateway, WAN, or telemetry problem does not look like ten separate incidents.</p>
+        </div>
+        <span id="outageStatus" class="subtle">Waiting for outage data...</span>
+      </div>
+      <section class="outage-grid">
+        <div class="card metric"><div class="label">Incidents</div><div id="outageIncidentCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Critical</div><div id="outageCriticalCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Warnings</div><div id="outageWarningCount" class="value">-</div></div>
+        <div class="card metric"><div class="label">Affected Checks</div><div id="outageAffectedCount" class="value">-</div></div>
+      </section>
+      <section class="card panel">
+        <h2>Correlated incidents</h2>
+        <div id="outageList" class="outage-list"></div>
       </section>
     </section>
 
@@ -1137,8 +1182,8 @@
   </div>
 
   <script>
-    const pages = ['summary', 'attention', 'timeline', 'control-plane', 'infrastructure', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, controlPlane: null, infrastructure: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'attention', 'timeline', 'control-plane', 'infrastructure', 'outages', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, controlPlane: null, infrastructure: null, outages: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -1165,6 +1210,7 @@
       state.unifiActions = await api('/api/unifi/actions?limit=25');
       state.controlPlane = await api('/api/control-plane?limit=150');
       state.infrastructure = await api('/api/infrastructure');
+      state.outages = await api('/api/outages');
       state.timeline = await api('/api/timeline?limit=150');
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
@@ -1177,6 +1223,7 @@
       renderTimeline();
       renderControlPlane();
       renderInfrastructure();
+      renderOutages();
       renderOperations();
       renderClients();
       renderDiscovery();
@@ -2045,6 +2092,49 @@
             <span class="pill ${pillClass}">${escapeHtml(device.status || 'unknown')}</span>
           </div>
           <div class="infra-meta">${escapeHtml(device.expected_ip || device.address || '-')} ${device.expected_uplink ? `&bull; uplink ${escapeHtml(device.expected_uplink)}` : ''}</div>
+        </div>
+      `;
+    }
+
+    function renderOutages() {
+      const outages = state.outages || {};
+      const totals = outages.totals || {};
+      const incidents = outages.incidents || [];
+      $('outageIncidentCount').textContent = totals.incidents || 0;
+      $('outageCriticalCount').textContent = totals.critical || 0;
+      $('outageWarningCount').textContent = totals.warning || 0;
+      $('outageAffectedCount').textContent = totals.affected_checks || 0;
+      $('outageCriticalCount').style.color = totals.critical ? 'var(--red)' : 'var(--green)';
+      $('outageWarningCount').style.color = totals.warning ? 'var(--amber)' : 'var(--green)';
+      $('outageStatus').textContent = incidents.length
+        ? `${incidents.length} correlated incident(s) active`
+        : outages.configured
+          ? 'No correlated outages right now'
+          : 'Waiting for checks or infrastructure inventory';
+      $('outageList').innerHTML = incidents.length
+        ? incidents.map(renderOutageIncident).join('')
+        : '<div class="empty-diagram">No active outage correlations. If failures appear, this page will group them by likely root cause.</div>';
+    }
+
+    function renderOutageIncident(incident) {
+      const pillClass = incident.severity === 'critical' ? 'down' : incident.severity === 'warning' ? 'warn' : 'ok';
+      const affected = incident.affected || [];
+      const evidence = incident.evidence || [];
+      return `
+        <div class="outage-card ${escapeAttr(incident.severity || 'info')}">
+          <div class="outage-title">
+            <strong>${escapeHtml(incident.title || 'Correlated incident')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(incident.severity || 'info')} / ${escapeHtml(incident.confidence || 'unknown')}</span>
+          </div>
+          <div class="outage-meta">${escapeHtml(incident.summary || '')}</div>
+          ${evidence.length ? `<ul class="evidence-list">${evidence.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
+          ${affected.length ? `
+            <div>
+              <div class="eyebrow">Affected checks</div>
+              <div class="outage-meta">${affected.slice(0, 8).map(item => `${escapeHtml(item.name || item.target)} (${escapeHtml(item.status || 'down')})`).join(' &bull; ')}</div>
+            </div>
+          ` : ''}
+          <div class="notice">${escapeHtml(incident.recommendation || 'Review related checks and timeline events.')}</div>
         </div>
       `;
     }
