@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import Config
+from .control_plane import monitor_cycle_event
 from .monitor import Monitor
 from .store import Store
 
@@ -81,8 +82,18 @@ class OpsHandler(SimpleHTTPRequestHandler):
             limit = _int(query.get("limit", ["100"])[0], 100)
             self._json(self.store.network_timeline(limit))
             return
+        if parsed.path == "/api/control-plane":
+            query = parse_qs(parsed.query)
+            limit = _int(query.get("limit", ["100"])[0], 100)
+            self._json(self.store.control_plane_summary(limit))
+            return
         if parsed.path == "/api/run-checks":
             results = self.monitor.run_once()
+            self.store.add_control_plane_event(monitor_cycle_event(
+                "healthy",
+                f"Manual check completed {len(results)} configured health checks.",
+                {"check_count": len(results), "manual": True},
+            ))
             self._json({"ok": True, "results": results})
             return
         if parsed.path == "/":

@@ -335,6 +335,19 @@
     .timeline-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
     .timeline-title strong { font-size: 15px; }
     .timeline-meta { color: var(--muted); line-height: 1.45; }
+    .control-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+    .control-layout { display: grid; grid-template-columns: .9fr 1.1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+    .source-list, .recommendation-list { display: grid; gap: 12px; }
+    .source-card, .recommendation-card {
+      border: 1px solid rgba(34,56,71,.75);
+      border-radius: 16px;
+      background: rgba(6,16,22,.52);
+      padding: 14px;
+      display: grid;
+      gap: 9px;
+    }
+    .source-title, .recommendation-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .source-meta, .recommendation-meta { color: var(--muted); line-height: 1.45; }
     .ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
     .ops-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
     .ops-list { display: grid; gap: 12px; }
@@ -512,7 +525,7 @@
       .summary, .sections, .quick-links { grid-template-columns: 1fr; }
       .client-filters { width: 100%; }
       .client-filters input, .client-filters select { width: 100%; }
-      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
+      .trust-grid, .utilization-grid, .detail-grid, .trend-grid, .entity-form-grid, .attention-grid, .attention-layout, .timeline-grid, .control-grid, .control-layout, .ops-grid, .ops-layout, .port-row { grid-template-columns: 1fr; }
       .speed-grid { grid-template-columns: 1fr; }
       .unifi-grid { grid-template-columns: 1fr; }
       .detail-overlay { padding: 12px; }
@@ -556,6 +569,7 @@
     <a href="#summary" data-page-link="summary">Summary</a>
     <a href="#attention" data-page-link="attention">Attention Queue</a>
     <a href="#timeline" data-page-link="timeline">Timeline</a>
+    <a href="#control-plane" data-page-link="control-plane">Control Plane</a>
     <a href="#operations" data-page-link="operations">Device Ops</a>
     <a href="#collection-health" data-page-link="collection-health">Collection Health</a>
     <a href="#network-map" data-page-link="network-map">Network Map</a>
@@ -625,6 +639,14 @@
             <p class="subtle">Review new clients, outages, recoveries, speed drops, inventory edits, and UniFi changes.</p>
           </div>
           <a class="page-link" href="#timeline">Open timeline</a>
+        </div>
+        <div class="card nav-card">
+          <div>
+            <div class="eyebrow">Reliability</div>
+            <h3>Control plane watchdog</h3>
+            <p class="subtle">Track monitor cycles, UniFi API failures, Network app restarts, and root-cause hints.</p>
+          </div>
+          <a class="page-link" href="#control-plane">Open watchdog</a>
         </div>
         <div class="card nav-card">
           <div>
@@ -751,6 +773,49 @@
           </select>
         </div>
         <div id="timelineList" class="timeline-list"></div>
+      </section>
+    </section>
+
+    <section id="page-control-plane" class="page" data-page="control-plane">
+      <div class="page-hero">
+        <div>
+          <div class="eyebrow">Control Plane</div>
+          <h2>Reliability watchdog</h2>
+          <p class="subtle">Watch the monitor loop and UniFi API control plane for failures, recoveries, restarts, and likely root causes.</p>
+        </div>
+        <span id="controlPlaneStatus" class="subtle">Waiting for control-plane events...</span>
+      </div>
+      <section class="control-grid">
+        <div class="card metric"><div class="label">Overall</div><div id="controlOverall" class="value">-</div></div>
+        <div class="card metric"><div class="label">Healthy</div><div id="controlHealthy" class="value">-</div></div>
+        <div class="card metric"><div class="label">Degraded</div><div id="controlDegraded" class="value">-</div></div>
+        <div class="card metric"><div class="label">Failing</div><div id="controlFailing" class="value">-</div></div>
+      </section>
+      <section class="control-layout">
+        <div class="card panel">
+          <h2>Collection sources</h2>
+          <div id="controlSources" class="source-list"></div>
+        </div>
+        <div class="card panel">
+          <h2>What to check next</h2>
+          <div id="controlRecommendations" class="recommendation-list"></div>
+        </div>
+      </section>
+      <section class="card panel">
+        <div class="toolbar">
+          <div>
+            <h2>Control-plane event timeline</h2>
+            <p class="subtle">Recent monitor cycle results and API failures, classified into readable causes.</p>
+          </div>
+          <select id="controlPlaneFilter" aria-label="Control plane filter">
+            <option value="all">All sources</option>
+            <option value="monitor">Monitor loop</option>
+            <option value="unifi_collector">UniFi collector</option>
+            <option value="local_network_api">Local Network API</option>
+            <option value="site_manager_api">Site Manager API</option>
+          </select>
+        </div>
+        <div id="controlTimeline" class="timeline-list"></div>
       </section>
     </section>
 
@@ -1016,8 +1081,8 @@
   </div>
 
   <script>
-    const pages = ['summary', 'attention', 'timeline', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
-    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
+    const pages = ['summary', 'attention', 'timeline', 'control-plane', 'operations', 'collection-health', 'network-map', 'unifi', 'clients', 'discovery'];
+    const state = { summary: null, unifi: null, unifiHistory: null, unifiActions: null, controlPlane: null, timeline: null, discovery: null, speed: null, selected: null, selectedEntity: null, timer: null, page: 'summary' };
     const $ = (id) => document.getElementById(id);
 
     async function api(path) {
@@ -1042,6 +1107,7 @@
       state.unifi = await api('/api/unifi');
       state.unifiHistory = await api(`/api/unifi/history?limit=${$('trendWindow')?.value || 144}`);
       state.unifiActions = await api('/api/unifi/actions?limit=25');
+      state.controlPlane = await api('/api/control-plane?limit=150');
       state.timeline = await api('/api/timeline?limit=150');
       state.discovery = await api('/api/discovery');
       state.speed = await api('/api/speed-test');
@@ -1052,6 +1118,7 @@
       renderUnifiHistory();
       renderAttentionQueue();
       renderTimeline();
+      renderControlPlane();
       renderOperations();
       renderClients();
       renderDiscovery();
@@ -1773,6 +1840,105 @@
           }
         });
       });
+    }
+
+    function renderControlPlane() {
+      const control = state.controlPlane || {};
+      const totals = control.totals || {};
+      const events = control.events || [];
+      const sources = Object.values(control.sources || {});
+      const recommendations = control.recommendations || [];
+      const filter = $('controlPlaneFilter')?.value || 'all';
+      const filtered = filter === 'all' ? events : events.filter(event => event.source === filter);
+      const status = control.status || 'unknown';
+
+      $('controlOverall').textContent = status;
+      $('controlOverall').style.color = status === 'failing'
+        ? 'var(--red)'
+        : status === 'degraded'
+          ? 'var(--amber)'
+          : status === 'healthy'
+            ? 'var(--green)'
+            : 'var(--muted)';
+      $('controlHealthy').textContent = totals.healthy || 0;
+      $('controlDegraded').textContent = totals.degraded || 0;
+      $('controlFailing').textContent = totals.failing || 0;
+      $('controlPlaneStatus').textContent = events.length
+        ? `${events.length} recent control-plane events`
+        : 'No control-plane events recorded yet';
+
+      $('controlSources').innerHTML = sources.length
+        ? sources.map(renderControlSource).join('')
+        : '<div class="empty-diagram">No monitor or UniFi collector events have been recorded yet.</div>';
+      $('controlRecommendations').innerHTML = recommendations.length
+        ? recommendations.map(renderRecommendation).join('')
+        : '<div class="empty-diagram">No active recommendations. The latest sources look healthy.</div>';
+      $('controlTimeline').innerHTML = filtered.length
+        ? filtered.map(renderControlEvent).join('')
+        : '<div class="empty-diagram">No control-plane events match this filter.</div>';
+    }
+
+    function renderControlSource(event) {
+      const pillClass = event.status === 'failing'
+        ? 'down'
+        : event.status === 'degraded'
+          ? 'warn'
+          : event.status === 'healthy'
+            ? 'ok'
+            : '';
+      return `
+        <div class="source-card">
+          <div class="source-title">
+            <strong>${escapeHtml(sourceLabel(event.source))}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(event.status || 'unknown')}</span>
+          </div>
+          <div class="source-meta">${escapeHtml(event.message || '')}</div>
+          <div class="subtle">${formatDate(event.timestamp)} &bull; ${escapeHtml(event.kind || '')}</div>
+        </div>
+      `;
+    }
+
+    function renderRecommendation(item) {
+      const pillClass = item.priority === 'high' ? 'down' : item.priority === 'medium' ? 'warn' : 'ok';
+      return `
+        <div class="recommendation-card">
+          <div class="recommendation-title">
+            <strong>${escapeHtml(item.title || 'Recommendation')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(item.priority || 'info')}</span>
+          </div>
+          <div class="recommendation-meta">${escapeHtml(item.detail || '')}</div>
+          <div class="subtle">${escapeHtml(sourceLabel(item.source || 'control plane'))}</div>
+        </div>
+      `;
+    }
+
+    function renderControlEvent(event, index) {
+      const pillClass = event.severity === 'critical'
+        ? 'down'
+        : event.severity === 'warning'
+          ? 'warn'
+          : event.severity === 'success'
+            ? 'ok'
+            : '';
+      return `
+        <div class="timeline-item ${escapeAttr(event.severity || 'info')}">
+          <div class="timeline-title">
+            <strong>${escapeHtml(event.title || event.kind || 'Control-plane event')}</strong>
+            <span class="pill ${pillClass}">${escapeHtml(event.status || event.severity || 'info')}</span>
+          </div>
+          <div class="timeline-meta">${escapeHtml(event.message || '')}</div>
+          <div class="subtle">${formatDate(event.timestamp)} &bull; ${escapeHtml(sourceLabel(event.source))} &bull; ${escapeHtml(event.kind || '')}</div>
+        </div>
+      `;
+    }
+
+    function sourceLabel(source) {
+      return {
+        monitor: 'Monitor loop',
+        unifi_collector: 'UniFi collector',
+        local_network_api: 'Local Network API',
+        site_manager_api: 'Site Manager API',
+      }[source] || source || 'Control plane';
     }
 
     function renderOperations() {
@@ -2690,6 +2856,7 @@
     $('clientIdentityFilter').addEventListener('change', renderClients);
     $('attentionFilter').addEventListener('change', renderAttentionQueue);
     $('timelineFilter').addEventListener('change', renderTimeline);
+    $('controlPlaneFilter').addEventListener('change', renderControlPlane);
     $('trendWindow').addEventListener('change', () => refresh().catch(error => {
       $('lastRefresh').textContent = `Load failed: ${error.message}`;
     }));

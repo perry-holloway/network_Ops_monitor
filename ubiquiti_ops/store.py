@@ -9,6 +9,8 @@ import sqlite3
 import threading
 from typing import Iterator
 
+from .control_plane import recommendations, snapshot_events
+
 
 class Store:
     def __init__(self, path: str):
@@ -128,6 +130,23 @@ class Store:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_unifi_action_requests_time ON unifi_action_requests(requested_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS control_plane_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    details TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_control_plane_events_time ON control_plane_events(timestamp DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_control_plane_events_source_time ON control_plane_events(source, timestamp DESC)")
 
     def add_result(self, result: dict) -> None:
         with self._lock, self._connection() as conn:
@@ -270,6 +289,7 @@ class Store:
                     json.dumps(snapshot, sort_keys=True),
                 ),
             )
+        self.record_control_plane_snapshot(snapshot)
 
     def latest_unifi_snapshot(self) -> dict:
         with self._lock, self._connection() as conn:
@@ -530,6 +550,81 @@ class Store:
             actions.append(payload)
         return {"count": len(actions), "actions": actions}
 
+    def add_control_plane_event(self, event: dict) -> dict:
+        payload = {
+            "timestamp": event.get("timestamp") or datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": str(event.get("source") or "unknown"),
+            "kind": str(event.get("kind") or "unknown"),
+            "status": str(event.get("status") or "unknown"),
+            "severity": str(event.get("severity") or "info"),
+            "title": str(event.get("title") or "Control plane event"),
+            "message": str(event.get("message") or ""),
+            "details": event.get("details", {}) if isinstance(event.get("details", {}), dict) else {},
+        }
+        with self._lock, self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO control_plane_events
+                    (timestamp, source, kind, status, severity, title, message, details)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["timestamp"],
+                    payload["source"],
+                    payload["kind"],
+                    payload["status"],
+                    payload["severity"],
+                    payload["title"],
+                    payload["message"],
+                    json.dumps(payload["details"], sort_keys=True),
+                ),
+            )
+            payload["id"] = cursor.lastrowid
+        return payload
+
+    def record_control_plane_snapshot(self, snapshot: dict) -> list[dict]:
+        recorded = []
+        for event in snapshot_events(snapshot):
+            recorded.append(self.add_control_plane_event(event))
+        return recorded
+
+    def control_plane_summary(self, limit: int = 100) -> dict:
+        max_limit = max(1, min(int(limit or 100), 500))
+        with self._lock, self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM control_plane_events
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max_limit,),
+            ).fetchall()
+
+        events = [_control_plane_row(row) for row in rows]
+        latest_by_source: dict[str, dict] = {}
+        for event in events:
+            latest_by_source.setdefault(event["source"], event)
+        failing = [event for event in latest_by_source.values() if event.get("status") == "failing"]
+        degraded = [event for event in latest_by_source.values() if event.get("status") == "degraded"]
+        healthy = [event for event in latest_by_source.values() if event.get("status") == "healthy"]
+        latest = events[0] if events else {}
+        return {
+            "configured": bool(events),
+            "status": "failing" if failing else "degraded" if degraded else "healthy" if healthy else "unknown",
+            "latest": latest,
+            "sources": latest_by_source,
+            "totals": {
+                "sources": len(latest_by_source),
+                "healthy": len(healthy),
+                "degraded": len(degraded),
+                "failing": len(failing),
+                "events": len(events),
+            },
+            "recommendations": recommendations(latest_by_source),
+            "events": events,
+        }
+
     def add_discovery_snapshot(self, snapshot: dict) -> None:
         payload = dict(snapshot)
         payload["device_count"] = len(payload.get("devices", [])) or int(payload.get("device_count") or 0)
@@ -640,6 +735,12 @@ def row_to_dict(row: sqlite3.Row) -> dict:
         data["details"] = json.loads(data["details"])
     except json.JSONDecodeError:
         data["details"] = {}
+    return data
+
+
+def _control_plane_row(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    data["details"] = _safe_json(data.get("details", ""))
     return data
 
 

@@ -15,6 +15,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Search and filter connected clients in a dedicated client inventory page
 - Discover reachable local devices by scanning configured LAN subnets
 - Run a manual WAN speed test from the dashboard and keep the latest result
+- Watch control-plane reliability with classified UniFi API failures, monitor-cycle health, and next-step hints
 - Persist check history in SQLite
 - Provide a local dashboard and JSON API
 - Run beside the existing threat monitor on port `8090`
@@ -158,6 +159,7 @@ Notes:
 - `UNIFI_WRITE_ACTIONS_ENABLED=false` keeps controller-changing operations blocked by default. The Device Ops page can record local reboot, firmware, PoE, port, client, VLAN, firewall, Wi-Fi, and ACL operation requests for audit/planning.
 - If you intentionally enable write-action workflows for testing, requests must include the `UNIFI_WRITE_ACTIONS_CONFIRMATION` token. This project records the request locally; controller-side write execution should only be wired with explicit maintenance-window controls.
 - `TRUSTED_CLIENTS` lets the Clients page label known devices and filter unknown/untrusted clients. Keep real MAC addresses only in local `.env`, especially for a public repo.
+- The Control Plane page classifies common failures like `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, timeouts, and interrupted connections. This is intended to help explain when the UniFi Network app is starting, restarting, missing API permissions, or using the wrong API path/key.
 
 UniFi documents local Network API access under UniFi Network > Integrations. The official local Network API includes endpoints for sites, adopted devices, connected clients, and latest device statistics when the local Network API key is available.
 
@@ -201,6 +203,7 @@ GET /api/unifi
 GET /api/unifi/actions
 POST /api/unifi/action
 GET /api/timeline
+GET /api/control-plane
 GET /api/discovery
 GET /api/speed-test
 GET /api/speed-test/run
