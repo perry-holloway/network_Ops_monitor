@@ -135,6 +135,11 @@ UNIFI_SITE_MANAGER_ENABLED=true
 UNIFI_SITE_MANAGER_BASE_URL=https://api.ui.com
 UNIFI_SITE_MANAGER_API_KEY=
 
+# Optional guarded operation requests.
+# Leave disabled unless you are intentionally testing write-action workflows.
+UNIFI_WRITE_ACTIONS_ENABLED=false
+UNIFI_WRITE_ACTIONS_CONFIRMATION=APPLY
+
 # Optional trusted/watched client labels.
 # Format: mac=name[:category];mac=name[:category]
 TRUSTED_CLIENTS=aa:bb:cc:dd:ee:ff=Work Laptop:trusted;11:22:33:44:55:66=Storage NAS:critical
@@ -150,6 +155,8 @@ Notes:
 - Set `UNIFI_VERIFY_TLS=false` for the default self-signed UDM certificate.
 - `UNIFI_LEGACY_STATS_ENABLED=true` attempts older local stats endpoints for richer traffic counters. If your console rejects those endpoints, the dashboard will still use the official API data it can collect.
 - `UNIFI_SITE_MANAGER_ENABLED=true` calls Site Manager endpoints including `GET /v1/sites`, `GET /v1/hosts`, `GET /v1/devices`, and `GET /v1/isp-metrics`.
+- `UNIFI_WRITE_ACTIONS_ENABLED=false` keeps controller-changing operations blocked by default. The Device Ops page can record local reboot, firmware, PoE, port, client, VLAN, firewall, Wi-Fi, and ACL operation requests for audit/planning.
+- If you intentionally enable write-action workflows for testing, requests must include the `UNIFI_WRITE_ACTIONS_CONFIRMATION` token. This project records the request locally; controller-side write execution should only be wired with explicit maintenance-window controls.
 - `TRUSTED_CLIENTS` lets the Clients page label known devices and filter unknown/untrusted clients. Keep real MAC addresses only in local `.env`, especially for a public repo.
 
 UniFi documents local Network API access under UniFi Network > Integrations. The official local Network API includes endpoints for sites, adopted devices, connected clients, and latest device statistics when the local Network API key is available.
@@ -191,6 +198,9 @@ Invoke-RestMethod `
 GET /api/summary
 GET /api/history?target=192.168.1.1&limit=50
 GET /api/unifi
+GET /api/unifi/actions
+POST /api/unifi/action
+GET /api/timeline
 GET /api/discovery
 GET /api/speed-test
 GET /api/speed-test/run

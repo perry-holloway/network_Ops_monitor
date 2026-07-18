@@ -42,6 +42,13 @@ class OpsHandler(SimpleHTTPRequestHandler):
             limit = _int(query.get("limit", ["120"])[0], 120)
             self._json(self.store.unifi_history(limit))
             return
+        if parsed.path == "/api/unifi/actions":
+            query = parse_qs(parsed.query)
+            limit = _int(query.get("limit", ["50"])[0], 50)
+            payload = self.store.unifi_actions(limit)
+            payload["write_actions_enabled"] = self.config.unifi_write_actions_enabled
+            self._json(payload)
+            return
         if parsed.path == "/api/discovery":
             snapshot = self.store.latest_discovery_snapshot()
             snapshot["discovery_enabled"] = self.config.lan_discovery_enabled
@@ -97,6 +104,16 @@ class OpsHandler(SimpleHTTPRequestHandler):
                 return
             self._json({"ok": True, "override": override})
             return
+        if parsed.path == "/api/unifi/action":
+            try:
+                payload = self._read_json()
+                action = self._prepare_unifi_action(payload)
+            except ValueError as exc:
+                self._json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+            recorded = self.store.record_unifi_action(action)
+            self._json({"ok": True, "action": recorded})
+            return
         self._json({"ok": False, "error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args) -> None:
@@ -109,6 +126,55 @@ class OpsHandler(SimpleHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("JSON body must be an object")
         return payload
+
+    def _prepare_unifi_action(self, payload: dict) -> dict:
+        allowed_actions = {
+            "reboot_device",
+            "update_firmware",
+            "toggle_poe",
+            "set_port_profile",
+            "set_port_speed",
+            "block_client",
+            "unblock_client",
+            "assign_client_vlan",
+            "apply_firewall_rule",
+            "apply_wifi_setting",
+            "apply_acl",
+        }
+        action = str(payload.get("action") or "").strip()
+        target_kind = str(payload.get("target_kind") or "").strip()
+        target_id = str(payload.get("target_id") or "").strip()
+        if action not in allowed_actions:
+            raise ValueError("Unsupported UniFi action")
+        if target_kind not in {"device", "client", "port", "policy"}:
+            raise ValueError("target_kind must be device, client, port, or policy")
+        if not target_id:
+            raise ValueError("target_id is required")
+
+        confirmation = str(payload.get("confirmation") or "").strip()
+        enabled = self.config.unifi_write_actions_enabled
+        confirmed = confirmation == self.config.unifi_write_actions_confirmation
+        status = "recorded"
+        message = (
+            "Local operation request recorded. Controller write execution is intentionally gated in this build."
+        )
+        if not enabled:
+            status = "blocked"
+            message = "Write actions are disabled. Set UNIFI_WRITE_ACTIONS_ENABLED=true only during a planned maintenance window."
+        elif not confirmed:
+            status = "blocked"
+            message = "Confirmation token did not match UNIFI_WRITE_ACTIONS_CONFIRMATION."
+
+        return {
+            "action": action,
+            "target_kind": target_kind,
+            "target_id": target_id,
+            "status": status,
+            "message": message,
+            "params": payload.get("params", {}) if isinstance(payload.get("params", {}), dict) else {},
+            "write_actions_enabled": enabled,
+            "confirmed": confirmed,
+        }
 
     def _json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8")

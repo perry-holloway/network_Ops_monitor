@@ -373,6 +373,11 @@ def summarize_client(client: dict) -> dict:
         "ip": str(client.get("ipAddress") or client.get("ip") or ""),
         "mac": str(client.get("macAddress") or client.get("mac") or ""),
         "type": str(client.get("type") or client.get("network") or "CLIENT"),
+        "ssid": str(client.get("ssid") or client.get("essid") or client.get("wifiNetwork") or ""),
+        "vlan": str(client.get("vlan") or client.get("vlanId") or client.get("networkId") or ""),
+        "signal_dbm": first_int(client, "signal", "rssi", "signalStrength", "wifiSignal"),
+        "tx_rate_mbps": first_float(client, "txRateMbps", "tx_rate", "txRate"),
+        "rx_rate_mbps": first_float(client, "rxRateMbps", "rx_rate", "rxRate"),
         "rx_bytes": rx,
         "tx_bytes": tx,
         "total_bytes": rx + tx,
@@ -407,12 +412,14 @@ def summarize_device(device: dict, stats: list[dict]) -> dict:
     stat = next((item for item in stats if str(item.get("deviceId")) == device_id), {})
     uplink = stat.get("uplink") if isinstance(stat.get("uplink"), dict) else {}
     downlink = stat.get("downlink") if isinstance(stat.get("downlink"), dict) else {}
+    ports = stat.get("ports") or device.get("ports") or []
+    radios = stat.get("radios") or device.get("radios") or []
     tx_rate = first_int(uplink, "txRateBps", "tx_rate_bps", "tx_bytes-r", "tx_bytes") or first_int(stat, "txRateBps", "tx_rate_bps")
     rx_rate = first_int(uplink, "rxRateBps", "rx_rate_bps", "rx_bytes-r", "rx_bytes") or first_int(stat, "rxRateBps", "rx_rate_bps")
     uplink_tx_bytes = first_int(uplink, "txBytes", "tx_bytes", "bytes-s")
     uplink_rx_bytes = first_int(uplink, "rxBytes", "rx_bytes", "bytes-r")
-    port_count = len(stat.get("ports") or device.get("ports") or []) if isinstance(stat.get("ports") or device.get("ports") or [], list) else 0
-    radio_count = len(stat.get("radios") or device.get("radios") or []) if isinstance(stat.get("radios") or device.get("radios") or [], list) else 0
+    port_count = len(ports) if isinstance(ports, list) else 0
+    radio_count = len(radios) if isinstance(radios, list) else 0
     return {
         "id": device_id,
         "name": str(device.get("name") or device.get("model") or device.get("macAddress") or "Unknown device"),
@@ -428,12 +435,35 @@ def summarize_device(device: dict, stats: list[dict]) -> dict:
         "total_bytes": uplink_rx_bytes + uplink_tx_bytes,
         "cpu_pct": first_float(stat, "cpuUtilizationPct", "cpu", "systemStats.cpu"),
         "memory_pct": first_float(stat, "memoryUtilizationPct", "mem", "systemStats.mem"),
+        "temperature_c": first_float(stat, "temperatureC", "temperature", "generalTemperature", "boardTemperatureC"),
         "uplink_name": str(uplink.get("name") or uplink.get("interface") or uplink.get("port") or ""),
+        "uplink_state": str(uplink.get("state") or uplink.get("status") or uplink.get("speed") or ""),
         "downlink_count": first_int(downlink, "count", "portCount"),
         "port_count": port_count,
         "radio_count": radio_count,
+        "ports": summarize_ports(ports),
         "raw": compact_raw(device),
     }
+
+
+def summarize_ports(ports: object) -> list[dict]:
+    if not isinstance(ports, list):
+        return []
+    output = []
+    for index, port in enumerate(ports, start=1):
+        if not isinstance(port, dict):
+            continue
+        output.append({
+            "id": str(port.get("id") or port.get("idx") or port.get("portIdx") or port.get("name") or index),
+            "name": str(port.get("name") or port.get("label") or f"Port {index}"),
+            "state": str(port.get("state") or port.get("status") or port.get("linkState") or ""),
+            "speed": str(port.get("speed") or port.get("speedMbps") or port.get("linkSpeed") or ""),
+            "poe": str(port.get("poe") or port.get("poeMode") or port.get("poeState") or ""),
+            "profile": str(port.get("profile") or port.get("portProfile") or port.get("nativeNetworkName") or ""),
+            "rx_rate_bps": first_int(port, "rxRateBps", "rx_rate_bps", "rx_bytes-r"),
+            "tx_rate_bps": first_int(port, "txRateBps", "tx_rate_bps", "tx_bytes-r"),
+        })
+    return output
 
 
 def merge_legacy_client_activity(current: list[dict], legacy_clients: list[dict]) -> list[dict]:

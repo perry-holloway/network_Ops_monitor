@@ -46,6 +46,8 @@ class Config:
     unifi_site_manager_enabled: bool
     unifi_site_manager_base_url: str
     unifi_site_manager_api_key: str
+    unifi_write_actions_enabled: bool
+    unifi_write_actions_confirmation: str
     trusted_clients: tuple[TrustedClient, ...]
     lan_discovery_enabled: bool
     lan_discovery_subnets: tuple[str, ...]
@@ -83,6 +85,8 @@ class Config:
             unifi_site_manager_enabled=_bool("UNIFI_SITE_MANAGER_ENABLED", False),
             unifi_site_manager_base_url=os.getenv("UNIFI_SITE_MANAGER_BASE_URL", "https://api.ui.com").rstrip("/"),
             unifi_site_manager_api_key=os.getenv("UNIFI_SITE_MANAGER_API_KEY", "").strip(),
+            unifi_write_actions_enabled=_bool("UNIFI_WRITE_ACTIONS_ENABLED", False),
+            unifi_write_actions_confirmation=os.getenv("UNIFI_WRITE_ACTIONS_CONFIRMATION", "APPLY").strip() or "APPLY",
             trusted_clients=parse_trusted_clients(os.getenv("TRUSTED_CLIENTS", "")),
             lan_discovery_enabled=_bool("LAN_DISCOVERY_ENABLED", False),
             lan_discovery_subnets=parse_csv(os.getenv("LAN_DISCOVERY_SUBNETS", "192.168.1.0/24")),

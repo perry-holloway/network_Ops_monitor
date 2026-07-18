@@ -113,6 +113,21 @@ class Store:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS unifi_action_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    requested_at TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    target_kind TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_unifi_action_requests_time ON unifi_action_requests(requested_at DESC)")
 
     def add_result(self, result: dict) -> None:
         with self._lock, self._connection() as conn:
@@ -466,6 +481,54 @@ class Store:
         ]
         snapshot["traffic_insights"] = insights
         return snapshot
+
+    def record_unifi_action(self, action: dict) -> dict:
+        requested_at = action.get("requested_at") or datetime.now(timezone.utc).isoformat(timespec="seconds")
+        payload = dict(action)
+        payload["requested_at"] = requested_at
+        with self._lock, self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO unifi_action_requests
+                    (requested_at, action, target_kind, target_id, status, message, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    requested_at,
+                    payload.get("action", ""),
+                    payload.get("target_kind", ""),
+                    payload.get("target_id", ""),
+                    payload.get("status", "queued"),
+                    payload.get("message", ""),
+                    json.dumps(payload, sort_keys=True),
+                ),
+            )
+            payload["id"] = cursor.lastrowid
+        return payload
+
+    def unifi_actions(self, limit: int = 50) -> dict:
+        with self._lock, self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM unifi_action_requests
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (max(1, min(int(limit or 50), 200)),),
+            ).fetchall()
+        actions = []
+        for row in rows:
+            payload = _safe_json(row["payload"])
+            payload["id"] = row["id"]
+            payload["requested_at"] = row["requested_at"]
+            payload["action"] = row["action"]
+            payload["target_kind"] = row["target_kind"]
+            payload["target_id"] = row["target_id"]
+            payload["status"] = row["status"]
+            payload["message"] = row["message"]
+            actions.append(payload)
+        return {"count": len(actions), "actions": actions}
 
     def add_discovery_snapshot(self, snapshot: dict) -> None:
         payload = dict(snapshot)
