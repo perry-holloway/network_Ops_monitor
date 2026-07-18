@@ -26,6 +26,14 @@ class TrustedClient:
 
 
 @dataclass(frozen=True)
+class InfrastructureDevice:
+    address: str
+    name: str
+    role: str
+    expected_uplink: str = ""
+
+
+@dataclass(frozen=True)
 class Config:
     app_host: str
     app_port: int
@@ -48,6 +56,7 @@ class Config:
     unifi_site_manager_api_key: str
     unifi_write_actions_enabled: bool
     unifi_write_actions_confirmation: str
+    infrastructure_devices: tuple[InfrastructureDevice, ...]
     trusted_clients: tuple[TrustedClient, ...]
     lan_discovery_enabled: bool
     lan_discovery_subnets: tuple[str, ...]
@@ -87,6 +96,7 @@ class Config:
             unifi_site_manager_api_key=os.getenv("UNIFI_SITE_MANAGER_API_KEY", "").strip(),
             unifi_write_actions_enabled=_bool("UNIFI_WRITE_ACTIONS_ENABLED", False),
             unifi_write_actions_confirmation=os.getenv("UNIFI_WRITE_ACTIONS_CONFIRMATION", "APPLY").strip() or "APPLY",
+            infrastructure_devices=parse_infrastructure_devices(os.getenv("INFRASTRUCTURE_DEVICES", "")),
             trusted_clients=parse_trusted_clients(os.getenv("TRUSTED_CLIENTS", "")),
             lan_discovery_enabled=_bool("LAN_DISCOVERY_ENABLED", False),
             lan_discovery_subnets=parse_csv(os.getenv("LAN_DISCOVERY_SUBNETS", "192.168.1.0/24")),
@@ -151,6 +161,26 @@ def parse_trusted_clients(raw: str) -> tuple[TrustedClient, ...]:
         category = parts[1].lower() if len(parts) > 1 and parts[1] else "trusted"
         clients.append(TrustedClient(normalized_mac, name, category))
     return tuple(clients)
+
+
+def parse_infrastructure_devices(raw: str) -> tuple[InfrastructureDevice, ...]:
+    devices: list[InfrastructureDevice] = []
+    valid_roles = {"gateway", "switch", "access_point", "ap", "server", "storage", "other"}
+    for item in raw.split(";"):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        address, rest = item.split("=", 1)
+        parts = [part.strip() for part in rest.split(":")]
+        name = parts[0] if parts and parts[0] else address.strip()
+        role = parts[1].lower().replace("-", "_").replace(" ", "_") if len(parts) > 1 and parts[1] else "other"
+        if role == "ap":
+            role = "access_point"
+        if role not in valid_roles:
+            role = "other"
+        expected_uplink = parts[2] if len(parts) > 2 else ""
+        devices.append(InfrastructureDevice(address.strip(), name, role, expected_uplink))
+    return tuple(devices)
 
 
 def normalize_mac(raw: str) -> str:

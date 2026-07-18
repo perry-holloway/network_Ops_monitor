@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .config import Config
 from .control_plane import monitor_cycle_event
+from .infrastructure import build_infrastructure_summary
 from .monitor import Monitor
 from .store import Store
 
@@ -86,6 +87,13 @@ class OpsHandler(SimpleHTTPRequestHandler):
             query = parse_qs(parsed.query)
             limit = _int(query.get("limit", ["100"])[0], 100)
             self._json(self.store.control_plane_summary(limit))
+            return
+        if parsed.path == "/api/infrastructure":
+            self._json(build_infrastructure_summary(
+                self.config.infrastructure_devices,
+                self.store.summary(),
+                self.store.latest_unifi_snapshot(),
+            ))
             return
         if parsed.path == "/api/run-checks":
             results = self.monitor.run_once()

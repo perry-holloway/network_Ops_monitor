@@ -16,6 +16,7 @@ This tool is separate from the threat monitor. The threat monitor focuses on sec
 - Discover reachable local devices by scanning configured LAN subnets
 - Run a manual WAN speed test from the dashboard and keep the latest result
 - Watch control-plane reliability with classified UniFi API failures, monitor-cycle health, and next-step hints
+- Track known infrastructure devices with roles, expected IPs, backbone order, and IP drift warnings
 - Persist check history in SQLite
 - Provide a local dashboard and JSON API
 - Run beside the existing threat monitor on port `8090`
@@ -42,7 +43,7 @@ Edit `.env` locally. Do not commit `.env`.
 ### Watched devices
 
 ```env
-WATCHED_DEVICES=192.168.1.1=UDM Gateway:critical:443,80;192.168.1.20=Storage NAS:critical:443,445
+WATCHED_DEVICES=192.168.1.1=UDM Gateway:critical:443,80;192.168.1.245=Main AP U6+:high:443;192.168.1.43=USW Flex Mini:high:443;192.168.1.20=Storage NAS:critical:443,445
 ```
 
 Format:
@@ -55,12 +56,31 @@ Examples:
 
 ```env
 192.168.1.1=UDM Gateway:critical:443,80
+192.168.1.245=Main AP U6+:high:443
+192.168.1.43=USW Flex Mini:high:443
 192.168.1.20=Storage NAS:critical:443,445
-192.168.1.50=Main AP:high:443
 192.168.1.75=Printer:normal:80
 ```
 
 The console first tries ICMP ping. If ping fails and ports are configured, it tries TCP connections to those ports. A device is considered online if either ping or one configured service port responds.
+
+### Infrastructure inventory
+
+Known infrastructure inventory is optional and keeps the UDM, switches, and access points visible as the network backbone.
+
+```env
+INFRASTRUCTURE_DEVICES=192.168.1.1=UDM Gateway:gateway;192.168.1.43=USW Flex Mini:switch:UDM Gateway;192.168.1.245=Main AP U6+:access_point:USW Flex Mini
+```
+
+Format:
+
+```text
+ip=name:role[:expected_uplink]
+```
+
+Roles: `gateway`, `switch`, `access_point`, `server`, `storage`, or `other`.
+
+The Infrastructure page shows role badges, expected IPs, observed UniFi inventory data, health-check status, and warnings when a known device appears at an unexpected IP.
 
 ### WAN checks
 
@@ -204,6 +224,7 @@ GET /api/unifi/actions
 POST /api/unifi/action
 GET /api/timeline
 GET /api/control-plane
+GET /api/infrastructure
 GET /api/discovery
 GET /api/speed-test
 GET /api/speed-test/run
