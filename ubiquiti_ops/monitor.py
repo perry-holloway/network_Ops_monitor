@@ -6,6 +6,7 @@ import time
 
 from .checks import check_device, check_dns, check_http, check_wan
 from .config import Config
+from .control_plane import monitor_cycle_event
 from .discovery import DiscoveryConfig, discover_lan
 from .speedtest import SpeedTestConfig, run_speed_test
 from .store import Store
@@ -72,7 +73,17 @@ class Monitor:
         while not self._stop.is_set():
             try:
                 results = self.run_once()
+                self.store.add_control_plane_event(monitor_cycle_event(
+                    "healthy",
+                    f"Completed {len(results)} configured health checks.",
+                    {"check_count": len(results)},
+                ))
                 LOG.info("completed %s operations checks", len(results))
-            except Exception:
+            except Exception as exc:
+                self.store.add_control_plane_event(monitor_cycle_event(
+                    "failing",
+                    str(exc) or "Monitor cycle failed.",
+                    {"exception": exc.__class__.__name__},
+                ))
                 LOG.exception("operations check failed")
             self._stop.wait(self.config.check_interval_seconds)

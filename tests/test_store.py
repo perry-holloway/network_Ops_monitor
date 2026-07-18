@@ -280,6 +280,38 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(actions["actions"][0]["target_id"], "device-1")
             self.assertEqual(actions["actions"][0]["status"], "blocked")
 
+    def test_control_plane_summary_tracks_latest_source_status(self):
+        with tempfile.TemporaryDirectory() as temp:
+            store = Store(str(Path(temp) / "ops-console.db"))
+            store.add_control_plane_event({
+                "timestamp": "2026-07-18T10:00:00+00:00",
+                "source": "local_network_api",
+                "kind": "endpoint_not_found",
+                "status": "failing",
+                "severity": "critical",
+                "title": "Local Network API is not healthy",
+                "message": "The endpoint was not found.",
+                "details": {"error": "HTTP Error 404: Not Found"},
+            })
+            store.add_control_plane_event({
+                "timestamp": "2026-07-18T10:05:00+00:00",
+                "source": "site_manager_api",
+                "kind": "source_healthy",
+                "status": "healthy",
+                "severity": "success",
+                "title": "Site Manager API responded",
+                "message": "Collection source responded successfully.",
+                "details": {},
+            })
+
+            summary = store.control_plane_summary()
+
+            self.assertEqual(summary["status"], "failing")
+            self.assertEqual(summary["totals"]["failing"], 1)
+            self.assertEqual(summary["totals"]["healthy"], 1)
+            self.assertEqual(summary["sources"]["local_network_api"]["kind"], "endpoint_not_found")
+            self.assertTrue(summary["recommendations"])
+
 
 if __name__ == "__main__":
     unittest.main()
